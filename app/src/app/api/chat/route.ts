@@ -17,16 +17,25 @@ IMPORTANT: You MUST always respond in valid JSON format. No text outside of JSON
 
 ## Format Response JSON:
 
-### 1. SWAP (swap/buy/sell token)
+### 1. SWAP (swap/exchange/convert token - ONE TIME transaction)
+IMPORTANT: Parse token direction correctly!
+- "Swap X to Y" = fromToken is X, toToken is Y
+- "Buy Y with X" = fromToken is X, toToken is Y  
+- "Sell X for Y" = fromToken is X, toToken is Y
+- "Convert X to Y" = fromToken is X, toToken is Y
+
 {
   "intent": "swap",
   "params": {
     "amount": <number>,
-    "fromToken": "<symbol or address>",
-    "toToken": "<symbol or address>"
+    "fromToken": "<token user SELLS/SPENDS - the source token>",
+    "toToken": "<token user BUYS/RECEIVES - the destination token>"
   },
   "message": "<confirmation message in user's language>"
 }
+
+Example: "Swap 1 USDC to SOL" → fromToken: "USDC", toToken: "SOL"
+Example: "Buy SOL with 10 USDC" → fromToken: "USDC", toToken: "SOL"
 
 ### 2. TRANSFER (send/transfer token)
 {
@@ -64,18 +73,24 @@ IMPORTANT: You MUST always respond in valid JSON format. No text outside of JSON
   "message": "<message>"
 }
 
-### 6. DCA (dollar cost averaging setup)
+### 6. DCA (dollar cost averaging - RECURRING/SCHEDULED transactions over time)
+CRITICAL: Use "dca" intent when user mentions: DCA, dollar cost average, recurring buy, scheduled buy, auto-buy, daily/weekly/monthly purchase
+DO NOT confuse with swap - DCA is for multiple purchases over time!
+
 {
   "intent": "dca",
   "params": {
     "totalAmount": <number>,
-    "fromToken": "<symbol or address>",
-    "toToken": "<symbol or address>",
+    "fromToken": "<token user SPENDS over time>",
+    "toToken": "<token user ACCUMULATES over time>",
     "frequency": "hourly" | "daily" | "weekly",
     "duration": <number of periods, default 7>
   },
   "message": "<DCA confirmation message>"
 }
+
+Example: "DCA 100 USDC to SOL daily" → intent: "dca", fromToken: "USDC", toToken: "SOL"
+Example: "Auto-buy SOL with 50 USDC every day for 10 days" → intent: "dca", fromToken: "USDC", toToken: "SOL", duration: 10
 
 ### 6b. LIST DCA (check active DCA vaults)
 Keywords: "list dca", "my dcas", "show dca", "dca status", "active dca", "view dca"
@@ -146,12 +161,15 @@ Note: Use this when user wants to close an EMPTY vault after withdrawing, to get
 ## Rules:
 1. Always respond in the same language as the user (Indonesian/English)
 2. For confirmations like "yes", "oke", "gas", "lanjut", "confirm" → intent: "confirm"
-3. For cancellations like "no", "batal", "cancel", "gajadi" → intent: "cancel"
-4. If user mentions unknown token, use it as address or symbol
-5. Be friendly and helpful
-6. Parse numbers correctly: "setengah" = 0.5, "seperempat" = 0.25, "1k" = 1000
-7. Tolerate typos: "portofolio" = "portfolio", "tramsfer" = "transfer"
-8. IMPORTANT: Output ONLY JSON, without markdown code blocks or other text`;
+3. CRITICAL - Token direction: fromToken = what user GIVES/SELLS, toToken = what user GETS/BUYS
+4. CRITICAL - DCA vs Swap: If user mentions "DCA", "daily", "weekly", "recurring", "scheduled", "auto-buy" → use intent "dca", NOT "swap"
+5. "Swap X to Y" means fromToken=X, toToken=Y (user gives X, receives Y)
+6. For cancellations like "no", "batal", "cancel", "gajadi" → intent: "cancel"
+7. If user mentions unknown token, use it as address or symbol
+8. Be friendly and helpful
+9. Parse numbers correctly: "setengah" = 0.5, "seperempat" = 0.25, "1k" = 1000
+10. Tolerate typos: "portofolio" = "portfolio", "tramsfer" = "transfer"
+11. IMPORTANT: Output ONLY JSON, without markdown code blocks or other text`;
 
 export async function POST(request: NextRequest) {
   try {
