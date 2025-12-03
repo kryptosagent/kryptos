@@ -1,0 +1,583 @@
+// KRYPTOS Smart Contract Integration
+// Handles DCA vault creation and management
+
+import { Connection, PublicKey, Transaction, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
+import { 
+  TOKEN_PROGRAM_ID, 
+  ASSOCIATED_TOKEN_PROGRAM_ID,
+  getAssociatedTokenAddress,
+  createAssociatedTokenAccountInstruction,
+  getAccount
+} from '@solana/spl-token';
+import BN from 'bn.js';
+
+// Program ID
+export const KRYPTOS_PROGRAM_ID = new PublicKey('F7gyohBLEMJFkMtQDkhqtEZmpABNPE3t32aL8LTXYjy2');
+
+// Seeds for PDAs
+const DCA_VAULT_SEED = Buffer.from('dca_vault');
+const INPUT_VAULT_SEED = Buffer.from('input_vault');
+const OUTPUT_VAULT_SEED = Buffer.from('output_vault');
+
+// Instruction discriminators
+const INITIALIZE_DCA_DISCRIMINATOR = Buffer.from([50, 254, 84, 15, 178, 10, 160, 191]);
+const WITHDRAW_DCA_DISCRIMINATOR = Buffer.from([48, 57, 69, 149, 154, 125, 2, 124]);
+const CLOSE_DCA_DISCRIMINATOR = Buffer.from([22, 7, 33, 98, 168, 183, 34, 243]);
+
+// Frequency to executions mapping (per week)
+export const FREQUENCY_MAP: Record<string, { min: number; max: number }> = {
+  'hourly': { min: 100, max: 168 },    // ~100-168 per week
+  'daily': { min: 7, max: 7 },         // 7 per week
+  'weekly': { min: 1, max: 1 },        // 1 per week
+  'twice-daily': { min: 14, max: 14 }, // 14 per week
+};
+
+export interface DcaParams {
+  totalAmount: number;        // Total amount in token units
+  tokenDecimals: number;      // Decimals of input token
+  frequency: string;          // 'hourly' | 'daily' | 'weekly'
+  duration: number;           // Number of periods
+  varianceBps?: number;       // Variance in bps (default 2000 = 20%)
+  windowStartHour?: number;   // UTC hour (default 0)
+  windowEndHour?: number;     // UTC hour (default 23)
+}
+
+export interface CreateDcaResult {
+  success: boolean;
+  signature?: string;
+  vaultAddress?: string;
+  error?: string;
+}
+
+export interface DcaVaultInfo {
+  address: string;
+  authority: string;
+  inputMint: string;
+  outputMint: string;
+  totalAmount: string;
+  totalSpent: string;
+  totalReceived: string;
+  amountPerTrade: string;
+  executionCount: number;
+  isActive: boolean;
+  nextExecution: Date | null;
+  exists: boolean;
+}
+
+// Derive DCA vault PDA
+export function deriveDcaVaultPDA(
+  authority: PublicKey,
+  inputMint: PublicKey,
+  outputMint: PublicKey
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [DCA_VAULT_SEED, authority.toBuffer(), inputMint.toBuffer(), outputMint.toBuffer()],
+    KRYPTOS_PROGRAM_ID
+  );
+}
+
+// Derive input vault PDA
+export function deriveInputVaultPDA(dcaVault: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [INPUT_VAULT_SEED, dcaVault.toBuffer()],
+    KRYPTOS_PROGRAM_ID
+  );
+}
+
+// Derive output vault PDA
+export function deriveOutputVaultPDA(dcaVault: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [OUTPUT_VAULT_SEED, dcaVault.toBuffer()],
+    KRYPTOS_PROGRAM_ID
+  );
+}
+
+// Helper: Write u64 as little-endian bytes (browser compatible)
+function writeU64LE(value: BN): Uint8Array {
+  const bytes = new Uint8Array(8);
+  const arr = value.toArray('le', 8);
+  bytes.set(arr);
+  return bytes;
+}
+
+// Helper: Write u16 as little-endian bytes
+function writeU16LE(value: number): Uint8Array {
+  const bytes = new Uint8Array(2);
+  bytes[0] = value & 0xff;
+  bytes[1] = (value >> 8) & 0xff;
+  return bytes;
+}
+
+// Helper: Read u64 from little-endian bytes
+function readU64LE(data: Uint8Array, offset: number): BN {
+  const bytes = data.slice(offset, offset + 8);
+  return new BN(bytes, 'le');
+}
+
+// Helper: Read u32 from little-endian bytes
+function readU32LE(data: Uint8Array, offset: number): number {
+  return data[offset] | (data[offset + 1] << 8) | (data[offset + 2] << 16) | (data[offset + 3] << 24);
+}
+
+// Helper: Read i64 from little-endian bytes
+function readI64LE(data: Uint8Array, offset: number): number {
+  const bn = readU64LE(data, offset);
+  return bn.toNumber();
+}
+
+// Serialize InitializeDcaParams (browser compatible)
+function serializeInitializeDcaParams(params: {
+  totalAmount: BN;
+  amountPerTrade: BN;
+  varianceBps: number;
+  minExecutions: number;
+  maxExecutions: number;
+  windowStartHour: number;
+  windowEndHour: number;
+}): Buffer {
+  // Total: 8 + 8 + 2 + 1 + 1 + 1 + 1 = 22 bytes
+  const totalAmountBytes = writeU64LE(params.totalAmount);
+  const amountPerTradeBytes = writeU64LE(params.amountPerTrade);
+  const varianceBpsBytes = writeU16LE(params.varianceBps);
+  
+  const result = new Uint8Array(22);
+  let offset = 0;
+  
+  // total_amount: u64
+  result.set(totalAmountBytes, offset);
+  offset += 8;
+  
+  // amount_per_trade: u64
+  result.set(amountPerTradeBytes, offset);
+  offset += 8;
+  
+  // variance_bps: u16
+  result.set(varianceBpsBytes, offset);
+  offset += 2;
+  
+  // min_executions: u8
+  result[offset] = params.minExecutions;
+  offset += 1;
+  
+  // max_executions: u8
+  result[offset] = params.maxExecutions;
+  offset += 1;
+  
+  // window_start_hour: u8
+  result[offset] = params.windowStartHour;
+  offset += 1;
+  
+  // window_end_hour: u8
+  result[offset] = params.windowEndHour;
+  
+  return Buffer.from(result);
+}
+
+// Calculate amount per trade based on frequency and duration
+function calculateAmountPerTrade(
+  totalAmount: BN,
+  frequency: string,
+  duration: number
+): BN {
+  let totalExecutions: number;
+  
+  switch (frequency) {
+    case 'hourly':
+      totalExecutions = duration; // duration = number of hours
+      break;
+    case 'daily':
+      totalExecutions = duration; // duration = number of days
+      break;
+    case 'weekly':
+      totalExecutions = duration; // duration = number of weeks
+      break;
+    case 'twice-daily':
+      totalExecutions = duration * 2;
+      break;
+    default:
+      totalExecutions = duration;
+  }
+  
+  // Prevent division by zero
+  if (totalExecutions === 0) totalExecutions = 1;
+  
+  return totalAmount.div(new BN(totalExecutions));
+}
+
+// Create DCA vault
+export async function createDcaVault(
+  connection: Connection,
+  wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction> },
+  inputMint: PublicKey,
+  outputMint: PublicKey,
+  params: DcaParams
+): Promise<CreateDcaResult> {
+  try {
+    const authority = wallet.publicKey;
+    
+    // Convert amount to smallest unit
+    const totalAmountBN = new BN(params.totalAmount * Math.pow(10, params.tokenDecimals));
+    
+    // Calculate amount per trade
+    const amountPerTrade = calculateAmountPerTrade(totalAmountBN, params.frequency, params.duration);
+    
+    // Get frequency config
+    const freqConfig = FREQUENCY_MAP[params.frequency] || FREQUENCY_MAP['daily'];
+    
+    // Derive PDAs
+    const [dcaVault, dcaVaultBump] = deriveDcaVaultPDA(authority, inputMint, outputMint);
+    const [inputVault, inputVaultBump] = deriveInputVaultPDA(dcaVault);
+    const [outputVault, outputVaultBump] = deriveOutputVaultPDA(dcaVault);
+    
+    // Get user's input token ATA
+    const userInputToken = await getAssociatedTokenAddress(inputMint, authority);
+    
+    // Check if user has the ATA
+    try {
+      await getAccount(connection, userInputToken);
+    } catch {
+      return {
+        success: false,
+        error: `You don't have a token account for the input token. Please ensure you have the token in your wallet.`,
+      };
+    }
+    
+    // Build instruction data
+    const instructionData = Buffer.concat([
+      INITIALIZE_DCA_DISCRIMINATOR,
+      serializeInitializeDcaParams({
+        totalAmount: totalAmountBN,
+        amountPerTrade,
+        varianceBps: params.varianceBps ?? 2000, // Default 20% variance
+        minExecutions: freqConfig.min,
+        maxExecutions: freqConfig.max,
+        windowStartHour: params.windowStartHour ?? 0,
+        windowEndHour: params.windowEndHour ?? 23,
+      }),
+    ]);
+    
+    // Build transaction
+    const transaction = new Transaction();
+    
+    // Add initialize_dca instruction
+    transaction.add({
+      keys: [
+        { pubkey: authority, isSigner: true, isWritable: true },
+        { pubkey: dcaVault, isSigner: false, isWritable: true },
+        { pubkey: inputMint, isSigner: false, isWritable: false },
+        { pubkey: outputMint, isSigner: false, isWritable: false },
+        { pubkey: userInputToken, isSigner: false, isWritable: true },
+        { pubkey: inputVault, isSigner: false, isWritable: true },
+        { pubkey: outputVault, isSigner: false, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+      ],
+      programId: KRYPTOS_PROGRAM_ID,
+      data: instructionData,
+    });
+    
+    // Get latest blockhash
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = authority;
+    
+    // Sign transaction
+    const signedTx = await wallet.signTransaction(transaction);
+    
+    // Send transaction
+    const signature = await connection.sendRawTransaction(signedTx.serialize(), {
+      skipPreflight: false,
+      preflightCommitment: 'confirmed',
+    });
+    
+    // Confirm transaction
+    await connection.confirmTransaction({
+      signature,
+      blockhash,
+      lastValidBlockHeight,
+    }, 'confirmed');
+    
+    return {
+      success: true,
+      signature,
+      vaultAddress: dcaVault.toBase58(),
+    };
+  } catch (error: any) {
+    console.error('Create DCA error:', error);
+    
+    // Parse error message
+    let errorMsg = error.message || 'Unknown error';
+    
+    if (errorMsg.includes('insufficient funds')) {
+      errorMsg = 'Insufficient funds to create DCA vault. Make sure you have enough tokens and SOL for fees.';
+    } else if (errorMsg.includes('already in use')) {
+      errorMsg = 'A DCA vault already exists for this token pair. Withdraw or close the existing vault first.';
+    }
+    
+    return {
+      success: false,
+      error: errorMsg,
+    };
+  }
+}
+
+// Withdraw from DCA vault
+export async function withdrawDcaVault(
+  connection: Connection,
+  wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction> },
+  inputMint: PublicKey,
+  outputMint: PublicKey
+): Promise<CreateDcaResult> {
+  try {
+    const authority = wallet.publicKey;
+    
+    // Derive PDAs
+    const [dcaVault] = deriveDcaVaultPDA(authority, inputMint, outputMint);
+    const [inputVault] = deriveInputVaultPDA(dcaVault);
+    const [outputVault] = deriveOutputVaultPDA(dcaVault);
+    
+    // Get user's token ATAs
+    const userInputToken = await getAssociatedTokenAddress(inputMint, authority);
+    const userOutputToken = await getAssociatedTokenAddress(outputMint, authority);
+    
+    // Build transaction
+    const transaction = new Transaction();
+    
+    // Check if user has input token ATA, if not create it
+    try {
+      await getAccount(connection, userInputToken);
+    } catch {
+      transaction.add(
+        createAssociatedTokenAccountInstruction(
+          authority,
+          userInputToken,
+          authority,
+          inputMint
+        )
+      );
+    }
+    
+    // Check if user has output token ATA, if not create it
+    try {
+      await getAccount(connection, userOutputToken);
+    } catch {
+      transaction.add(
+        createAssociatedTokenAccountInstruction(
+          authority,
+          userOutputToken,
+          authority,
+          outputMint
+        )
+      );
+    }
+    
+    // Add withdraw_dca instruction
+    transaction.add({
+      keys: [
+        { pubkey: authority, isSigner: true, isWritable: true },
+        { pubkey: dcaVault, isSigner: false, isWritable: true },
+        { pubkey: inputVault, isSigner: false, isWritable: true },
+        { pubkey: outputVault, isSigner: false, isWritable: true },
+        { pubkey: userInputToken, isSigner: false, isWritable: true },
+        { pubkey: userOutputToken, isSigner: false, isWritable: true },
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      ],
+      programId: KRYPTOS_PROGRAM_ID,
+      data: WITHDRAW_DCA_DISCRIMINATOR,
+    });
+    
+    // Get latest blockhash
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = authority;
+    
+    // Sign and send
+    const signedTx = await wallet.signTransaction(transaction);
+    const signature = await connection.sendRawTransaction(signedTx.serialize());
+    await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+    
+    return { success: true, signature };
+  } catch (error: any) {
+    console.error('Withdraw DCA error:', error);
+    
+    let errorMsg = error.message || 'Unknown error';
+    
+    if (errorMsg.includes('AccountNotInitialized')) {
+      errorMsg = 'DCA vault not found for this token pair.';
+    } else if (errorMsg.includes('NoFundsToWithdraw')) {
+      errorMsg = 'No funds to withdraw. The vault may already be empty.';
+    }
+    
+    return { success: false, error: errorMsg };
+  }
+}
+
+// Get DCA vault info (with detailed parsing)
+export async function getDcaVaultInfo(
+  connection: Connection,
+  authority: PublicKey,
+  inputMint: PublicKey,
+  outputMint: PublicKey
+): Promise<DcaVaultInfo | null> {
+  try {
+    const [dcaVault] = deriveDcaVaultPDA(authority, inputMint, outputMint);
+    const accountInfo = await connection.getAccountInfo(dcaVault);
+    
+    if (!accountInfo) return null;
+    
+    const data = new Uint8Array(accountInfo.data);
+    
+    // Skip 8-byte discriminator
+    let offset = 8;
+    
+    // Parse DcaVault struct
+    // authority: Pubkey (32 bytes)
+    const vaultAuthority = new PublicKey(data.slice(offset, offset + 32));
+    offset += 32;
+    
+    // input_mint: Pubkey (32 bytes)
+    const vaultInputMint = new PublicKey(data.slice(offset, offset + 32));
+    offset += 32;
+    
+    // output_mint: Pubkey (32 bytes)
+    const vaultOutputMint = new PublicKey(data.slice(offset, offset + 32));
+    offset += 32;
+    
+    // input_vault: Pubkey (32 bytes)
+    offset += 32;
+    
+    // output_vault: Pubkey (32 bytes)
+    offset += 32;
+    
+    // total_amount: u64 (8 bytes)
+    const totalAmount = readU64LE(data, offset);
+    offset += 8;
+    
+    // amount_per_trade: u64 (8 bytes)
+    const amountPerTrade = readU64LE(data, offset);
+    offset += 8;
+    
+    // variance_bps: u16 (2 bytes)
+    offset += 2;
+    
+    // min_executions: u8 (1 byte)
+    offset += 1;
+    
+    // max_executions: u8 (1 byte)
+    offset += 1;
+    
+    // window_start_hour: u8 (1 byte)
+    offset += 1;
+    
+    // window_end_hour: u8 (1 byte)
+    offset += 1;
+    
+    // total_spent: u64 (8 bytes)
+    const totalSpent = readU64LE(data, offset);
+    offset += 8;
+    
+    // total_received: u64 (8 bytes)
+    const totalReceived = readU64LE(data, offset);
+    offset += 8;
+    
+    // execution_count: u32 (4 bytes)
+    const executionCount = readU32LE(data, offset);
+    offset += 4;
+    
+    // last_execution: i64 (8 bytes)
+    offset += 8;
+    
+    // next_execution: i64 (8 bytes)
+    const nextExecutionTs = readI64LE(data, offset);
+    offset += 8;
+    
+    // is_active: bool (1 byte)
+    const isActive = data[offset] === 1;
+    
+    return {
+      address: dcaVault.toBase58(),
+      authority: vaultAuthority.toBase58(),
+      inputMint: vaultInputMint.toBase58(),
+      outputMint: vaultOutputMint.toBase58(),
+      totalAmount: totalAmount.toString(),
+      totalSpent: totalSpent.toString(),
+      totalReceived: totalReceived.toString(),
+      amountPerTrade: amountPerTrade.toString(),
+      executionCount,
+      isActive,
+      nextExecution: nextExecutionTs > 0 ? new Date(nextExecutionTs * 1000) : null,
+      exists: true,
+    };
+  } catch (error) {
+    console.error('Get DCA vault info error:', error);
+    return null;
+  }
+}
+
+// Close DCA vault (reclaim rent after withdraw)
+export async function closeDcaVault(
+  connection: Connection,
+  wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction> },
+  inputMint: PublicKey,
+  outputMint: PublicKey
+): Promise<CreateDcaResult> {
+  try {
+    const authority = wallet.publicKey;
+    
+    // Derive PDAs
+    const [dcaVault] = deriveDcaVaultPDA(authority, inputMint, outputMint);
+    const [inputVault] = deriveInputVaultPDA(dcaVault);
+    const [outputVault] = deriveOutputVaultPDA(dcaVault);
+    
+    // Check if vault exists
+    const vaultInfo = await getDcaVaultInfo(connection, authority, inputMint, outputMint);
+    if (!vaultInfo) {
+      return {
+        success: false,
+        error: 'DCA vault not found for this token pair.',
+      };
+    }
+    
+    // Build transaction
+    const transaction = new Transaction();
+    
+    // Add close_dca instruction
+    transaction.add({
+      keys: [
+        { pubkey: authority, isSigner: true, isWritable: true },
+        { pubkey: dcaVault, isSigner: false, isWritable: true },
+        { pubkey: inputVault, isSigner: false, isWritable: true },
+        { pubkey: outputVault, isSigner: false, isWritable: true },
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      ],
+      programId: KRYPTOS_PROGRAM_ID,
+      data: CLOSE_DCA_DISCRIMINATOR,
+    });
+    
+    // Get latest blockhash
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = authority;
+    
+    // Sign and send
+    const signedTx = await wallet.signTransaction(transaction);
+    const signature = await connection.sendRawTransaction(signedTx.serialize());
+    await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+    
+    return { success: true, signature };
+  } catch (error: any) {
+    console.error('Close DCA error:', error);
+    
+    let errorMsg = error.message || 'Unknown error';
+    
+    if (errorMsg.includes('DcaHasRemainingFunds')) {
+      errorMsg = 'Cannot close vault: it still has remaining funds. Use "Withdraw DCA" first to get your funds back.';
+    } else if (errorMsg.includes('AccountNotInitialized')) {
+      errorMsg = 'DCA vault not found for this token pair.';
+    }
+    
+    return { success: false, error: errorMsg };
+  }
+}
