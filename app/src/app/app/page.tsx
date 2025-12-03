@@ -862,7 +862,7 @@ Connect your wallet to start!`,
       
       if (result.success) {
         updateMessage(messageId, {
-          content: `✅ **Swap Successful!**\n\n**Swapped:** ${amount} ${fromToken.symbol}\n**Received:** ${result.outAmount} ${toToken.symbol}`,
+          content: `✅ **Swap Successful!**\n\n**Swapped:** ${amount} ${fromToken.symbol}\n**Received:** ${result.outAmount} ${toToken.symbol}\n\n🔄 Refreshing in 2s...`,
           status: 'done',
           txSignature: result.signature,
         });
@@ -879,12 +879,18 @@ Connect your wallet to start!`,
             toAmount: parseFloat(result.outAmount || '0'),
           },
         });
+        
+        // Auto refresh after 2 seconds
+        setTimeout(() => window.location.reload(), 2000);
       } else {
         updateMessage(messageId, {
-          content: `❌ **Swap Failed**\n\n${result.error || 'Unknown error'}`,
+          content: `❌ **Swap Failed**\n\n${result.error || 'Unknown error'}\n\n🔄 Refreshing in 2s...`,
           status: 'error',
           txSignature: result.signature,
         });
+        
+        // Auto refresh after 2 seconds
+        setTimeout(() => window.location.reload(), 2000);
       }
     } else if (command.type === 'transfer' && fromToken) {
       const { amount, tokenMint, destination } = command.params;
@@ -900,7 +906,7 @@ Connect your wallet to start!`,
       
       if (result.success) {
         updateMessage(messageId, {
-          content: `✅ **Transfer Successful!**\n\n**Sent:** ${amount} ${fromToken.symbol}\n**To:** \`${formatAddress(destination)}\``,
+          content: `✅ **Transfer Successful!**\n\n**Sent:** ${amount} ${fromToken.symbol}\n**To:** \`${formatAddress(destination)}\`\n\n🔄 Refreshing in 2s...`,
           status: 'done',
           txSignature: result.signature,
         });
@@ -916,11 +922,17 @@ Connect your wallet to start!`,
             destination,
           },
         });
+        
+        // Auto refresh after 2 seconds
+        setTimeout(() => window.location.reload(), 2000);
       } else {
         updateMessage(messageId, {
-          content: `❌ **Transfer Failed**\n\n${result.error || 'Unknown error'}`,
+          content: `❌ **Transfer Failed**\n\n${result.error || 'Unknown error'}\n\n🔄 Refreshing in 2s...`,
           status: 'error',
         });
+        
+        // Auto refresh after 2 seconds
+        setTimeout(() => window.location.reload(), 2000);
       }
     } else if (command.type === 'dca' && fromToken && toToken) {
       // DCA vault creation
@@ -942,7 +954,7 @@ Connect your wallet to start!`,
         
         if (result.success) {
           updateMessage(messageId, {
-            content: `✅ **DCA Vault Created!**\n\n**Vault:** \`${result.vaultAddress}\`\n**Total:** ${totalAmount} ${fromToken.symbol}\n**To:** ${toToken.symbol}\n**Frequency:** ${frequency}\n**Duration:** ${duration} periods\n\nThe keeper service will automatically execute your DCA with privacy features.`,
+            content: `✅ **DCA Vault Created!**\n\n**Vault:** \`${result.vaultAddress}\`\n**Total:** ${totalAmount} ${fromToken.symbol}\n**To:** ${toToken.symbol}\n**Frequency:** ${frequency}\n**Duration:** ${duration} periods\n\nThe keeper service will automatically execute your DCA with privacy features.\n\n🔄 Refreshing in 2s...`,
             status: 'done',
             txSignature: result.signature,
           });
@@ -958,17 +970,26 @@ Connect your wallet to start!`,
               fromAmount: totalAmount,
             },
           });
+          
+          // Auto refresh after 2 seconds
+          setTimeout(() => window.location.reload(), 2000);
         } else {
           updateMessage(messageId, {
-            content: `❌ **DCA Creation Failed**\n\n${result.error}`,
+            content: `❌ **DCA Creation Failed**\n\n${result.error}\n\n🔄 Refreshing in 2s...`,
             status: 'error',
           });
+          
+          // Auto refresh after 2 seconds
+          setTimeout(() => window.location.reload(), 2000);
         }
       } catch (error: any) {
         updateMessage(messageId, {
-          content: `❌ **DCA Creation Failed**\n\n${error.message}`,
+          content: `❌ **DCA Creation Failed**\n\n${error.message}\n\n🔄 Refreshing in 2s...`,
           status: 'error',
         });
+        
+        // Auto refresh after 2 seconds
+        setTimeout(() => window.location.reload(), 2000);
       }
     } else if (command.type === 'withdraw_dca' && fromToken && toToken) {
       // Withdraw from DCA vault
@@ -984,7 +1005,7 @@ Connect your wallet to start!`,
         
         if (result.success) {
           updateMessage(messageId, {
-            content: `✅ **DCA Vault Withdrawn!**\n\n**Pair:** ${fromToken.symbol} → ${toToken.symbol}\n\nYour remaining funds have been returned to your wallet.\n\nThe vault is now deactivated.`,
+            content: `✅ **DCA Vault Withdrawn!**\n\n**Pair:** ${fromToken.symbol} → ${toToken.symbol}\n\nYour remaining funds have been returned to your wallet.\n\nThe vault is now deactivated.\n\n🔄 Refreshing in 2s...`,
             status: 'done',
             txSignature: result.signature,
           });
@@ -1000,17 +1021,26 @@ Connect your wallet to start!`,
               fromAmount: 0,
             },
           });
+          
+          // Auto refresh after 2 seconds
+          setTimeout(() => window.location.reload(), 2000);
         } else {
           updateMessage(messageId, {
-            content: `❌ **Withdraw Failed**\n\n${result.error || 'Unknown error'}\n\nMake sure the vault exists and has funds to withdraw.`,
+            content: `❌ **Withdraw Failed**\n\n${result.error || 'Unknown error'}\n\nMake sure the vault exists and has funds to withdraw.\n\n🔄 Refreshing in 2s...`,
             status: 'error',
           });
+          
+          // Auto refresh after 2 seconds
+          setTimeout(() => window.location.reload(), 2000);
         }
       } catch (error: any) {
         updateMessage(messageId, {
-          content: `❌ **Withdraw Failed**\n\n${error.message}`,
+          content: `❌ **Withdraw Failed**\n\n${error.message}\n\n🔄 Refreshing in 2s...`,
           status: 'error',
         });
+        
+        // Auto refresh after 2 seconds
+        setTimeout(() => window.location.reload(), 2000);
       }
     } else if (command.type === 'close_dca' && fromToken && toToken) {
       // Close empty DCA vault to reclaim rent
@@ -1026,7 +1056,7 @@ Connect your wallet to start!`,
         
         if (result.success) {
           updateMessage(messageId, {
-            content: `✅ **DCA Vault Closed!**\n\n**Pair:** ${fromToken.symbol} → ${toToken.symbol}\n\nThe vault has been permanently closed and ~0.002 SOL rent has been returned to your wallet.`,
+            content: `✅ **DCA Vault Closed!**\n\n**Pair:** ${fromToken.symbol} → ${toToken.symbol}\n\nThe vault has been permanently closed and ~0.002 SOL rent has been returned to your wallet.\n\n🔄 Refreshing in 2s...`,
             status: 'done',
             txSignature: result.signature,
           });
@@ -1042,17 +1072,26 @@ Connect your wallet to start!`,
               fromAmount: 0,
             },
           });
+          
+          // Auto refresh after 2 seconds
+          setTimeout(() => window.location.reload(), 2000);
         } else {
           updateMessage(messageId, {
-            content: `❌ **Close Failed**\n\n${result.error || 'Unknown error'}\n\nMake sure the vault is empty. Use \`Withdraw DCA\` first to get your funds back.`,
+            content: `❌ **Close Failed**\n\n${result.error || 'Unknown error'}\n\nMake sure the vault is empty. Use \`Withdraw DCA\` first to get your funds back.\n\n🔄 Refreshing in 2s...`,
             status: 'error',
           });
+          
+          // Auto refresh after 2 seconds
+          setTimeout(() => window.location.reload(), 2000);
         }
       } catch (error: any) {
         updateMessage(messageId, {
-          content: `❌ **Close Failed**\n\n${error.message}`,
+          content: `❌ **Close Failed**\n\n${error.message}\n\n🔄 Refreshing in 2s...`,
           status: 'error',
         });
+        
+        // Auto refresh after 2 seconds
+        setTimeout(() => window.location.reload(), 2000);
       }
     }
   };
@@ -1071,7 +1110,7 @@ Connect your wallet to start!`,
     addMessage({ role: 'user', content: userInput });
 
     // Clear old pending confirmations if user starts new command (not confirm/cancel)
-    if (!['confirm', 'cancel', 'yes', 'no', 'ok', 'oke'].includes(userInput.toLowerCase().trim())) {
+    if (!['confirm', 'cancel', 'yes', 'no', 'ok', 'oke', 'gas', 'lanjut', 'batal'].includes(userInput.toLowerCase().trim())) {
       setMessages(prev => prev.map(m => 
         m.status === 'confirming' ? { ...m, status: 'done' as MessageStatus } : m
       ));
