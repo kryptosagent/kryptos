@@ -13,7 +13,7 @@ import {
   Clock,
   Layers,
   Terminal,
-  Github,
+  Mail,
   FileText,
   Bot
 } from 'lucide-react';
@@ -272,8 +272,8 @@ export default function LandingPage() {
             
             {/* Links */}
             <div className="flex items-center gap-6">
-              <a href="https://github.com" target="_blank" rel="noopener noreferrer" className="text-zinc-400 hover:text-white transition-colors">
-                <Github className="w-5 h-5" />
+              <a href="mailto:hello@kryptosagent.xyz" className="text-zinc-400 hover:text-white transition-colors">
+                <Mail className="w-5 h-5" />
               </a>
               <a href="https://x.com/@kryptos_fi" target="_blank" rel="noopener noreferrer" className="text-zinc-400 hover:text-white transition-colors">
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
@@ -287,12 +287,12 @@ export default function LandingPage() {
               <span className="text-zinc-500 text-sm">$KRYPTOS:</span>
               <button 
                 onClick={() => {
-                  navigator.clipboard.writeText('PASTE_YOUR_TOKEN_ADDRESS_HERE');
+                  navigator.clipboard.writeText('PASTE_TOKEN_ADDRESS_HERE');
                   // Optional: Add toast notification
                 }}
                 className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg hover:border-zinc-700 transition-colors group"
               >
-                <code className="text-zinc-300 text-xs font-mono">PASTE_YOUR...ADDRESS</code>
+                <code className="text-zinc-300 text-xs font-mono">Soon..</code>
                 <Copy className="w-3.5 h-3.5 text-zinc-500 group-hover:text-white transition-colors" />
               </button>
             </div>

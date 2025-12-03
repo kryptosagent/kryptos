@@ -11,7 +11,8 @@ import {
   X,
   Code,
   Lock,
-  HelpCircle
+  HelpCircle,
+  Mail
 } from 'lucide-react';
 
 // Sidebar navigation items
@@ -748,6 +749,25 @@ const docsContent: Record<string, { title: string; content: React.ReactNode }> =
                 <div>
                   <h4 className="text-white font-semibold">X (Twitter)</h4>
                   <p className="text-zinc-500 text-sm">@kryptos_fi</p>
+                </div>
+              </div>
+              <ExternalLink className="w-5 h-5 text-zinc-500 group-hover:text-white transition-colors" />
+            </div>
+          </a>
+
+          {/* Email */}
+          <a 
+            href="mailto:hello@kryptosagent.xyz" 
+            className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 hover:border-zinc-700 transition-colors group"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-zinc-800 rounded-xl flex items-center justify-center group-hover:bg-zinc-700 transition-colors">
+                  <Mail className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-white font-semibold">Email</h4>
+                  <p className="text-zinc-500 text-sm">hello@kryptosagent.xyz</p>
                 </div>
               </div>
               <ExternalLink className="w-5 h-5 text-zinc-500 group-hover:text-white transition-colors" />
