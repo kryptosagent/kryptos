@@ -1065,11 +1065,18 @@ Connect your wallet to start!`,
     setInput('');
     
     // Find pending message BEFORE adding user message
-    const pendingMsg = messages.find(m => m.role === 'assistant' && m.status === 'confirming');
+    const pendingMsg = [...messages].reverse().find(m => m.role === 'assistant' && m.status === 'confirming');
     
     // Add user message
     addMessage({ role: 'user', content: userInput });
-    
+
+    // Clear old pending confirmations if user starts new command (not confirm/cancel)
+    if (!['confirm', 'cancel', 'yes', 'no', 'ok', 'oke'].includes(userInput.toLowerCase().trim())) {
+      setMessages(prev => prev.map(m => 
+        m.status === 'confirming' ? { ...m, status: 'done' as MessageStatus } : m
+      ));
+    }
+
     setIsProcessing(true);
     const messageId = addMessage({ role: 'assistant', content: 'Thinking...', status: 'thinking' });
     
