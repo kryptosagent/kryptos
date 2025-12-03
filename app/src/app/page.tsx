@@ -193,7 +193,7 @@ export default function LandingPage() {
             <FeatureCard 
               icon={Shield}
               title="MEV Protection"
-              description="Powered by Jupiter with built-in MEV protection. Your swaps are sandwich-attack proof."
+              description="Built-in MEV protection shields every transaction. Your swaps are sandwich-attack proof."
             />
             <FeatureCard 
               icon={Clock}
@@ -203,7 +203,7 @@ export default function LandingPage() {
             <FeatureCard 
               icon={Zap}
               title="Instant Swaps"
-              description="Execute swaps in seconds with optimal routing across all Solana DEXes via Jupiter aggregation."
+              description="Execute swaps in seconds with optimal routing across all Solana DEXes via smart aggregation."
             />
             <FeatureCard 
               icon={Terminal}
