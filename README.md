@@ -44,6 +44,7 @@ Your agent handles the rest with built-in privacy features.
 ### ⚡ Core Capabilities
 - **Instant Swaps** — Optimal routing across all Solana DEXes
 - **Private DCA Vaults** — On-chain automated strategies with privacy features
+- **Limit Orders** — Set price targets and auto-execute when conditions are met
 - **Token Lookup** — Check any token info by symbol or contract address
 - **Portfolio Tracking** — View balances across all holdings
 
@@ -134,6 +135,10 @@ Program ID: F7gyohBLEMJFkMtQDkhqtEZmpABNPE3t32aL8LTXYjy2
 | `withdraw_dca` | Withdraw funds from an active vault |
 | `close_dca` | Close an empty vault and reclaim rent |
 | `execute_dca` | Execute a DCA order (keeper only) |
+| `create_intent` | Create a limit order with price trigger |
+| `withdraw_intent` | Withdraw funds from a limit order |
+| `close_intent` | Close an empty intent vault and reclaim rent |
+| `execute_intent` | Execute a limit order when price target is hit (keeper only) |
 
 ### DCA Vault Features
 
@@ -169,6 +174,9 @@ INTENT_CHECK_INTERVAL=30
 |---------|---------|-------------|
 | Swap | `Swap 1 SOL to USDC` | Instant token swap |
 | DCA | `DCA 100 USDC to SOL daily for 7 days` | Create DCA vault |
+| Limit Order | `Buy SOL when price drops to $200` | Create limit order |
+| List Limits | `My limit orders` | View active limit orders |
+| Cancel Limit | `Cancel limit order` | Cancel and withdraw funds |
 | Transfer | `Send 10 USDC to <address>` | Transfer tokens |
 | Balance | `Check my balance` | View portfolio |
 | Price | `Price of SOL` | Get token price |
@@ -191,7 +199,7 @@ Found a vulnerability? Please email [hello@kryptosagent.xyz](mailto:hello@krypto
 - [x] Natural language swap execution
 - [x] Private DCA vaults with timing obfuscation
 - [x] MEV-protected transactions
-- [ ] Limit orders with privacy features
+- [x] Limit orders with privacy features
 - [ ] Cross-chain private swaps
 - [ ] Mobile app
 - [ ] Telegram bot integration
