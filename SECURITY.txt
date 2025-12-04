@@ -1,0 +1,5 @@
+Name: KRYPTOS
+Policy: https://github.com/kryptosagent/kryptos#security
+Contact: hello@kryptosagent.xyz
+Preferred Languages: English
+Source Code: https://github.com/kryptosagent/kryptos
