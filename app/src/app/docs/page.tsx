@@ -795,23 +795,26 @@ const docsContent: Record<string, { title: string; content: React.ReactNode }> =
             </div>
           </a>
           
-          {/* Solscan - Token (Coming Soon) */}
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 opacity-60">
+          {/* Solscan - Token */}
+          <a 
+            href="https://solscan.io/token/9Uoz8X9wt4oC5sDJUxE4xaHarA9pctQm91Npctdspump" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 hover:border-zinc-700 transition-colors group"
+          >
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 bg-zinc-800 rounded-xl flex items-center justify-center">
-                  <span className="text-xl font-bold">K</span>
+                <div className="w-12 h-12 bg-zinc-800 rounded-xl flex items-center justify-center group-hover:bg-zinc-700 transition-colors">
+                  <Code className="w-6 h-6" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-white font-semibold">Token on Solscan</h4>
-                    <span className="px-2 py-0.5 bg-yellow-500/20 text-yellow-300 text-xs rounded-full">Coming Soon</span>
-                  </div>
-                  <p className="text-zinc-500 text-sm">$KRYPTOS token address TBA</p>
+                  <h4 className="text-white font-semibold">Token on Solscan</h4>
+                  <p className="text-zinc-500 text-sm font-mono">$KRYPTOS: 9Uoz8X9wt4oC5sDJUxE4xaHarA9pctQm91Npctdspump</p>
                 </div>
               </div>
+              <ExternalLink className="w-5 h-5 text-zinc-500 group-hover:text-white transition-colors" />
             </div>
-          </div>
+          </a>
         </div>
       </div>
     ),

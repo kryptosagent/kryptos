@@ -287,12 +287,12 @@ export default function LandingPage() {
               <span className="text-zinc-500 text-sm">$KRYPTOS:</span>
               <button 
                 onClick={() => {
-                  navigator.clipboard.writeText('PASTE_TOKEN_ADDRESS_HERE');
+                  navigator.clipboard.writeText('9Uoz8X9wt4oC5sDJUxE4xaHarA9pctQm91Npctdspump');
                   // Optional: Add toast notification
                 }}
                 className="flex items-center gap-2 px-3 py-1.5 bg-zinc-900 border border-zinc-800 rounded-lg hover:border-zinc-700 transition-colors group"
               >
-                <code className="text-zinc-300 text-xs font-mono">Soon..</code>
+                <code className="text-zinc-300 text-xs font-mono">9Uoz8...pump</code>
                 <Copy className="w-3.5 h-3.5 text-zinc-500 group-hover:text-white transition-colors" />
               </button>
             </div>
