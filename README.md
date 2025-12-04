@@ -8,9 +8,11 @@
   [![License: MIT](https://img.shields.io/badge/License-MIT-white.svg)](https://opensource.org/licenses/MIT)
   [![Solana](https://img.shields.io/badge/Solana-Mainnet-black.svg)](https://solana.com)
   [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
-  [![Next.js](https://img.shields.io/badge/Next.js-14-black.svg)](https://nextjs.org/)
+  [![Next.js](https://img.shields.io/badge/Next.js-16-black.svg)](https://nextjs.org/)
+  [![Rust](https://img.shields.io/badge/Rust-1.89-orange.svg)](https://www.rust-lang.org/)
+  [![Anchor](https://img.shields.io/badge/Anchor-0.32-purple.svg)](https://www.anchor-lang.com/)
 
-  [Website](https://kryptosagent.xyz) • [Launch App](https://kryptosagent.xyz/app) • [Documentation](https://kryptosagent.xyz/docs) • [Twitter](https://x.com/kryptos_fi)
+  [Website](https://kryptosagent.xyz) • [Launch App](https://kryptosagent.xyz/app) • [Documentation](https://kryptosagent.xyz/docs) • [Twitter](https://x.com/kryptos_fi) • [$KRYPTOS](https://solscan.io/token/9Uoz8X9wt4oC5sDJUxE4xaHarA9pctQm91Npctdspump)
 </div>
 
 ---
@@ -71,17 +73,17 @@ Your agent handles the rest with built-in privacy features.
 
 | Component | Description | Tech Stack |
 |-----------|-------------|------------|
-| **Frontend** | Chat-based interface for user interaction | Next.js 14, React, TailwindCSS |
-| **Smart Contract** | On-chain DCA vaults and privacy logic | Anchor (Rust) |
-| **Keeper Service** | Automated DCA execution with randomization | Node.js, TypeScript |
+| **Frontend** | Chat-based interface for user interaction | Next.js 16, React 19, TailwindCSS 4 |
+| **Smart Contract** | On-chain DCA vaults and privacy logic | Anchor 0.32, Rust 1.89 |
+| **Keeper Service** | Automated DCA execution with randomization | Node.js 20, TypeScript 5 |
 | **LLM Agent** | Natural language parsing and intent detection | OpenRouter API |
 
 ## Quick Start
 
 ### Prerequisites
 
-- Node.js 18+
-- Rust & Anchor CLI (for smart contract development)
+- Node.js 20+
+- Rust 1.89+ & Anchor CLI 0.32+ (for smart contract development)
 - Solana CLI
 - A Solana wallet with SOL for transactions
 
@@ -215,6 +217,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Documentation**: [kryptosagent.xyz/docs](https://kryptosagent.xyz/docs)
 - **Twitter**: [@kryptos_fi](https://x.com/kryptos_fi)
 - **Email**: [hello@kryptosagent.xyz](mailto:hello@kryptosagent.xyz)
+- **Token**: [$KRYPTOS](https://solscan.io/token/9Uoz8X9wt4oC5sDJUxE4xaHarA9pctQm91Npctdspump)
 
 ---
 
