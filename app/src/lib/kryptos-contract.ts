@@ -581,3 +581,587 @@ export async function closeDcaVault(
     return { success: false, error: errorMsg };
   }
 }
+
+// ============================================
+// INTENT / LIMIT ORDER FUNCTIONS
+// ============================================
+
+// Intent Seeds
+const INTENT_VAULT_SEED = Buffer.from('intent_vault');
+const INTENT_INPUT_VAULT_SEED = Buffer.from('intent_input_vault');
+
+// Intent Instruction discriminators
+const CREATE_INTENT_DISCRIMINATOR = Buffer.from([216, 214, 79, 121, 23, 194, 96, 104]);
+const WITHDRAW_INTENT_DISCRIMINATOR = Buffer.from([155, 234, 133, 148, 93, 182, 48, 51]);
+const CLOSE_INTENT_DISCRIMINATOR = Buffer.from([112, 245, 154, 249, 57, 126, 54, 122]);
+
+// Intent Vault discriminator (for account filtering)
+const INTENT_VAULT_DISCRIMINATOR = Buffer.from([57, 85, 33, 184, 254, 191, 96, 45]);
+
+// Intent types
+export enum IntentType {
+  Buy = 0,
+  Sell = 1,
+  Swap = 2,
+}
+
+export enum TriggerType {
+  PriceAbove = 0,
+  PriceBelow = 1,
+  PriceRange = 2,
+}
+
+export enum ExecutionStyle {
+  Immediate = 0,
+  Stealth = 1,
+  Twap = 2,
+}
+
+export enum IntentStatus {
+  Monitoring = 0,
+  Triggered = 1,
+  Executing = 2,
+  Executed = 3,
+  Expired = 4,
+  Cancelled = 5,
+}
+
+export interface LimitOrderParams {
+  inputMint: PublicKey;
+  outputMint: PublicKey;
+  amount: number;              // Amount in token units
+  tokenDecimals: number;       // Decimals of input token
+  triggerPrice: number;        // Price in USD (e.g., 150 for $150)
+  triggerType: TriggerType;    // PriceAbove, PriceBelow, PriceRange
+  triggerPriceMax?: number;    // For PriceRange only
+  executionStyle?: ExecutionStyle;  // Default: Immediate
+  numChunks?: number;          // For Stealth/TWAP (default 1)
+  expiryHours?: number;        // Expiry in hours (default 24)
+}
+
+export interface IntentVaultInfo {
+  address: string;
+  authority: string;
+  nonce: string;
+  intentType: IntentType;
+  inputMint: string;
+  outputMint: string;
+  amount: string;
+  triggerType: TriggerType;
+  triggerPrice: string;
+  triggerPriceMax: string;
+  executionStyle: ExecutionStyle;
+  numChunks: number;
+  chunksExecuted: number;
+  expiresAt: Date;
+  triggeredAt: Date | null;
+  executedAt: Date | null;
+  createdAt: Date;
+  status: IntentStatus;
+  totalSpent: string;
+  totalReceived: string;
+}
+
+// Derive Intent vault PDA
+export function deriveIntentVaultPDA(
+  authority: PublicKey,
+  inputMint: PublicKey,
+  nonce: BN
+): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [
+      INTENT_VAULT_SEED,
+      authority.toBuffer(),
+      inputMint.toBuffer(),
+      nonce.toArrayLike(Buffer, 'le', 8),
+    ],
+    KRYPTOS_PROGRAM_ID
+  );
+}
+
+// Derive Intent input vault PDA
+export function deriveIntentInputVaultPDA(intentVault: PublicKey): [PublicKey, number] {
+  return PublicKey.findProgramAddressSync(
+    [INTENT_INPUT_VAULT_SEED, intentVault.toBuffer()],
+    KRYPTOS_PROGRAM_ID
+  );
+}
+
+// Helper: Write i64 as little-endian bytes
+function writeI64LE(value: number): Uint8Array {
+  const bn = new BN(value);
+  return writeU64LE(bn);
+}
+
+// Serialize CreateIntentParams
+function serializeCreateIntentParams(params: {
+  nonce: BN;
+  intentType: number;
+  amount: BN;
+  triggerType: number;
+  triggerPrice: BN;
+  triggerPriceMax: BN;
+  executionStyle: number;
+  numChunks: number;
+  expirySeconds: number;
+}): Buffer {
+  // Total: 8 + 1 + 8 + 1 + 8 + 8 + 1 + 1 + 8 = 44 bytes
+  const result = new Uint8Array(44);
+  let offset = 0;
+  
+  // nonce: u64
+  result.set(writeU64LE(params.nonce), offset);
+  offset += 8;
+  
+  // intent_type: u8
+  result[offset] = params.intentType;
+  offset += 1;
+  
+  // amount: u64
+  result.set(writeU64LE(params.amount), offset);
+  offset += 8;
+  
+  // trigger_type: u8
+  result[offset] = params.triggerType;
+  offset += 1;
+  
+  // trigger_price: u64
+  result.set(writeU64LE(params.triggerPrice), offset);
+  offset += 8;
+  
+  // trigger_price_max: u64
+  result.set(writeU64LE(params.triggerPriceMax), offset);
+  offset += 8;
+  
+  // execution_style: u8
+  result[offset] = params.executionStyle;
+  offset += 1;
+  
+  // num_chunks: u8
+  result[offset] = params.numChunks;
+  offset += 1;
+  
+  // expiry_seconds: i64
+  result.set(writeI64LE(params.expirySeconds), offset);
+  
+  return Buffer.from(result);
+}
+
+// Generate unique nonce based on timestamp
+function generateNonce(): BN {
+  return new BN(Date.now());
+}
+
+// Create Limit Order (Intent)
+export async function createLimitOrder(
+  connection: Connection,
+  wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction> },
+  params: LimitOrderParams
+): Promise<CreateDcaResult> {
+  try {
+    const authority = wallet.publicKey;
+    
+    // Generate unique nonce
+    const nonce = generateNonce();
+    
+    // Convert amount to smallest unit
+    const amountBN = new BN(Math.floor(params.amount * Math.pow(10, params.tokenDecimals)));
+    
+    // Convert trigger price to 6 decimals (USD)
+    const triggerPriceBN = new BN(Math.floor(params.triggerPrice * 1_000_000));
+    const triggerPriceMaxBN = params.triggerPriceMax 
+      ? new BN(Math.floor(params.triggerPriceMax * 1_000_000))
+      : new BN(0);
+    
+    // Determine intent type based on trigger
+    // Buy = spend USDC to buy token when price drops (PriceBelow)
+    // Sell = sell token for USDC when price rises (PriceAbove)
+    let intentType = IntentType.Swap; // Default
+    
+    // Derive PDAs
+    const [intentVault] = deriveIntentVaultPDA(authority, params.inputMint, nonce);
+    const [vaultInputToken] = deriveIntentInputVaultPDA(intentVault);
+    
+    // Get user's input token ATA
+    const userInputToken = await getAssociatedTokenAddress(params.inputMint, authority);
+    
+    // Check if user has the ATA
+    try {
+      await getAccount(connection, userInputToken);
+    } catch {
+      return {
+        success: false,
+        error: `You don't have a token account for the input token. Please ensure you have the token in your wallet.`,
+      };
+    }
+    
+    // Calculate expiry in seconds
+    const expirySeconds = (params.expiryHours ?? 24) * 60 * 60;
+    
+    // Build instruction data
+    const instructionData = Buffer.concat([
+      CREATE_INTENT_DISCRIMINATOR,
+      serializeCreateIntentParams({
+        nonce,
+        intentType,
+        amount: amountBN,
+        triggerType: params.triggerType,
+        triggerPrice: triggerPriceBN,
+        triggerPriceMax: triggerPriceMaxBN,
+        executionStyle: params.executionStyle ?? ExecutionStyle.Immediate,
+        numChunks: params.numChunks ?? 1,
+        expirySeconds,
+      }),
+    ]);
+    
+    // Build transaction
+    const transaction = new Transaction();
+    
+    // Add create_intent instruction
+    transaction.add({
+      keys: [
+        { pubkey: authority, isSigner: true, isWritable: true },
+        { pubkey: intentVault, isSigner: false, isWritable: true },
+        { pubkey: params.inputMint, isSigner: false, isWritable: false },
+        { pubkey: params.outputMint, isSigner: false, isWritable: false },
+        { pubkey: userInputToken, isSigner: false, isWritable: true },
+        { pubkey: vaultInputToken, isSigner: false, isWritable: true },
+        { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
+      ],
+      programId: KRYPTOS_PROGRAM_ID,
+      data: instructionData,
+    });
+    
+    // Get latest blockhash
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = authority;
+    
+    // Sign transaction
+    const signedTx = await wallet.signTransaction(transaction);
+    
+    // Send transaction
+    const signature = await connection.sendRawTransaction(signedTx.serialize(), {
+      skipPreflight: false,
+      preflightCommitment: 'confirmed',
+    });
+    
+    // Confirm transaction
+    await connection.confirmTransaction({
+      signature,
+      blockhash,
+      lastValidBlockHeight,
+    }, 'confirmed');
+    
+    return {
+      success: true,
+      signature,
+      vaultAddress: intentVault.toBase58(),
+    };
+  } catch (error: any) {
+    console.error('Create Limit Order error:', error);
+    
+    let errorMsg = error.message || 'Unknown error';
+    
+    if (errorMsg.includes('insufficient funds')) {
+      errorMsg = 'Insufficient funds to create limit order. Make sure you have enough tokens and SOL for fees.';
+    }
+    
+    return {
+      success: false,
+      error: errorMsg,
+    };
+  }
+}
+
+// Withdraw from Intent vault
+export async function withdrawIntent(
+  connection: Connection,
+  wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction> },
+  intentVaultAddress: PublicKey
+): Promise<CreateDcaResult> {
+  try {
+    const authority = wallet.publicKey;
+    
+    // Get intent vault account to find input mint
+    const accountInfo = await connection.getAccountInfo(intentVaultAddress);
+    if (!accountInfo) {
+      return { success: false, error: 'Intent vault not found.' };
+    }
+    
+    // Parse to get input_mint (offset: 8 discriminator + 32 authority + 8 nonce + 1 intent_type = 49)
+    const data = new Uint8Array(accountInfo.data);
+    const inputMint = new PublicKey(data.slice(49, 81));
+    
+    // Derive vault input token PDA
+    const [vaultInputToken] = deriveIntentInputVaultPDA(intentVaultAddress);
+    
+    // Get user's input token ATA
+    const userInputToken = await getAssociatedTokenAddress(inputMint, authority);
+    
+    // Build transaction
+    const transaction = new Transaction();
+    
+    // Check if user has input token ATA, if not create it
+    try {
+      await getAccount(connection, userInputToken);
+    } catch {
+      transaction.add(
+        createAssociatedTokenAccountInstruction(
+          authority,
+          userInputToken,
+          authority,
+          inputMint
+        )
+      );
+    }
+    
+    // Add withdraw_intent instruction
+    transaction.add({
+      keys: [
+        { pubkey: authority, isSigner: true, isWritable: true },
+        { pubkey: intentVaultAddress, isSigner: false, isWritable: true },
+        { pubkey: vaultInputToken, isSigner: false, isWritable: true },
+        { pubkey: userInputToken, isSigner: false, isWritable: true },
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      ],
+      programId: KRYPTOS_PROGRAM_ID,
+      data: WITHDRAW_INTENT_DISCRIMINATOR,
+    });
+    
+    // Get latest blockhash
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = authority;
+    
+    // Sign and send
+    const signedTx = await wallet.signTransaction(transaction);
+    const signature = await connection.sendRawTransaction(signedTx.serialize());
+    await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+    
+    return { success: true, signature };
+  } catch (error: any) {
+    console.error('Withdraw Intent error:', error);
+    
+    let errorMsg = error.message || 'Unknown error';
+    
+    if (errorMsg.includes('Unauthorized')) {
+      errorMsg = 'You are not the owner of this intent vault.';
+    }
+    
+    return { success: false, error: errorMsg };
+  }
+}
+
+// Close Intent vault (reclaim rent after withdraw)
+export async function closeIntent(
+  connection: Connection,
+  wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction> },
+  intentVaultAddress: PublicKey
+): Promise<CreateDcaResult> {
+  try {
+    const authority = wallet.publicKey;
+    
+    // Derive vault input token PDA
+    const [vaultInputToken] = deriveIntentInputVaultPDA(intentVaultAddress);
+    
+    // Build transaction
+    const transaction = new Transaction();
+    
+    // Add close_intent instruction
+    transaction.add({
+      keys: [
+        { pubkey: authority, isSigner: true, isWritable: true },
+        { pubkey: intentVaultAddress, isSigner: false, isWritable: true },
+        { pubkey: vaultInputToken, isSigner: false, isWritable: true },
+        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+      ],
+      programId: KRYPTOS_PROGRAM_ID,
+      data: CLOSE_INTENT_DISCRIMINATOR,
+    });
+    
+    // Get latest blockhash
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+    transaction.feePayer = authority;
+    
+    // Sign and send
+    const signedTx = await wallet.signTransaction(transaction);
+    const signature = await connection.sendRawTransaction(signedTx.serialize());
+    await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+    
+    return { success: true, signature };
+  } catch (error: any) {
+    console.error('Close Intent error:', error);
+    
+    let errorMsg = error.message || 'Unknown error';
+    
+    if (errorMsg.includes('IntentHasRemainingFunds')) {
+      errorMsg = 'Cannot close: vault still has funds. Withdraw first.';
+    }
+    
+    return { success: false, error: errorMsg };
+  }
+}
+
+// Parse Intent vault data
+function parseIntentVault(address: PublicKey, data: Uint8Array): IntentVaultInfo {
+  let offset = 8; // Skip discriminator
+  
+  // authority: Pubkey (32 bytes)
+  const authority = new PublicKey(data.slice(offset, offset + 32));
+  offset += 32;
+  
+  // nonce: u64 (8 bytes)
+  const nonce = readU64LE(data, offset);
+  offset += 8;
+  
+  // intent_type: u8 (1 byte)
+  const intentType = data[offset] as IntentType;
+  offset += 1;
+  
+  // input_mint: Pubkey (32 bytes)
+  const inputMint = new PublicKey(data.slice(offset, offset + 32));
+  offset += 32;
+  
+  // output_mint: Pubkey (32 bytes)
+  const outputMint = new PublicKey(data.slice(offset, offset + 32));
+  offset += 32;
+  
+  // input_vault: Pubkey (32 bytes) - skip
+  offset += 32;
+  
+  // amount: u64 (8 bytes)
+  const amount = readU64LE(data, offset);
+  offset += 8;
+  
+  // trigger_type: u8 (1 byte)
+  const triggerType = data[offset] as TriggerType;
+  offset += 1;
+  
+  // trigger_price: u64 (8 bytes)
+  const triggerPrice = readU64LE(data, offset);
+  offset += 8;
+  
+  // trigger_price_max: u64 (8 bytes)
+  const triggerPriceMax = readU64LE(data, offset);
+  offset += 8;
+  
+  // execution_style: u8 (1 byte)
+  const executionStyle = data[offset] as ExecutionStyle;
+  offset += 1;
+  
+  // num_chunks: u8 (1 byte)
+  const numChunks = data[offset];
+  offset += 1;
+  
+  // chunks_executed: u8 (1 byte)
+  const chunksExecuted = data[offset];
+  offset += 1;
+  
+  // expires_at: i64 (8 bytes)
+  const expiresAt = readI64LE(data, offset);
+  offset += 8;
+  
+  // triggered_at: i64 (8 bytes)
+  const triggeredAt = readI64LE(data, offset);
+  offset += 8;
+  
+  // executed_at: i64 (8 bytes)
+  const executedAt = readI64LE(data, offset);
+  offset += 8;
+  
+  // created_at: i64 (8 bytes)
+  const createdAt = readI64LE(data, offset);
+  offset += 8;
+  
+  // status: u8 (1 byte)
+  const status = data[offset] as IntentStatus;
+  offset += 1;
+  
+  // total_spent: u64 (8 bytes)
+  const totalSpent = readU64LE(data, offset);
+  offset += 8;
+  
+  // total_received: u64 (8 bytes)
+  const totalReceived = readU64LE(data, offset);
+  
+  return {
+    address: address.toBase58(),
+    authority: authority.toBase58(),
+    nonce: nonce.toString(),
+    intentType,
+    inputMint: inputMint.toBase58(),
+    outputMint: outputMint.toBase58(),
+    amount: amount.toString(),
+    triggerType,
+    triggerPrice: triggerPrice.toString(),
+    triggerPriceMax: triggerPriceMax.toString(),
+    executionStyle,
+    numChunks,
+    chunksExecuted,
+    expiresAt: new Date(expiresAt * 1000),
+    triggeredAt: triggeredAt > 0 ? new Date(triggeredAt * 1000) : null,
+    executedAt: executedAt > 0 ? new Date(executedAt * 1000) : null,
+    createdAt: new Date(createdAt * 1000),
+    status,
+    totalSpent: totalSpent.toString(),
+    totalReceived: totalReceived.toString(),
+  };
+}
+
+// Get all Intent vaults for a user
+export async function getUserIntentVaults(
+  connection: Connection,
+  authority: PublicKey
+): Promise<IntentVaultInfo[]> {
+  try {
+    // Get all program accounts with IntentVault discriminator
+    const accounts = await connection.getProgramAccounts(KRYPTOS_PROGRAM_ID, {
+      filters: [
+        { memcmp: { offset: 0, bytes: INTENT_VAULT_DISCRIMINATOR.toString('base64') } },
+        { memcmp: { offset: 8, bytes: authority.toBase58() } },
+      ],
+    });
+    
+    const vaults: IntentVaultInfo[] = [];
+    
+    for (const account of accounts) {
+      try {
+        const data = new Uint8Array(account.account.data);
+        const vault = parseIntentVault(account.pubkey, data);
+        vaults.push(vault);
+      } catch (e) {
+        console.error('Error parsing intent vault:', e);
+      }
+    }
+    
+    // Sort by created_at descending (newest first)
+    vaults.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    
+    return vaults;
+  } catch (error) {
+    console.error('Get user intent vaults error:', error);
+    return [];
+  }
+}
+
+// Get single Intent vault info by address
+export async function getIntentVaultInfo(
+  connection: Connection,
+  intentVaultAddress: PublicKey
+): Promise<IntentVaultInfo | null> {
+  try {
+    const accountInfo = await connection.getAccountInfo(intentVaultAddress);
+    if (!accountInfo) return null;
+    
+    const data = new Uint8Array(accountInfo.data);
+    return parseIntentVault(intentVaultAddress, data);
+  } catch (error) {
+    console.error('Get intent vault info error:', error);
+    return null;
+  }
+}

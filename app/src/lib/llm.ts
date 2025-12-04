@@ -1,5 +1,5 @@
 export interface LLMResponse {
-  intent: 'swap' | 'transfer' | 'dca' | 'withdraw_dca' | 'close_dca' | 'list_dca' | 'balance' | 'price' | 'token' | 'help' | 'cancel' | 'confirm' | 'conversation' | 'unclear';
+  intent: 'swap' | 'transfer' | 'dca' | 'withdraw_dca' | 'close_dca' | 'list_dca' | 'limit_order' | 'list_limit_orders' | 'cancel_limit_order' | 'balance' | 'price' | 'token' | 'help' | 'cancel' | 'confirm' | 'conversation' | 'unclear';
   params: Record<string, any>;
   message: string;
 }

@@ -144,7 +144,7 @@ export interface JupiterHoldingsResponse {
 }
 
 // Command types
-export type CommandType = 'swap' | 'transfer' | 'dca' | 'withdraw_dca' | 'close_dca' | 'list_dca' | 'balance' | 'status' | 'price' | 'token' | 'help' | 'unknown';
+export type CommandType = 'swap' | 'transfer' | 'dca' | 'withdraw_dca' | 'close_dca' | 'list_dca' | 'limit_order' | 'list_limit_orders' | 'cancel_limit_order' | 'balance' | 'status' | 'price' | 'token' | 'help' | 'unknown';
 
 export interface ParsedCommand {
   type: CommandType;
@@ -1048,6 +1048,12 @@ export function getHelpMessage(): string {
 \`Close DCA USDC to SOL\` - Close empty vault, reclaim rent
 \`My DCAs\` - List active DCA vaults
 
+**Limit Orders:**
+\`Buy SOL when price drops to $200\` - Buy at target price
+\`Sell 1 SOL when price hits $250\` - Sell at target price
+\`My limit orders\` - List active limit orders
+\`Cancel limit order\` - Cancel & get funds back
+
 **Check Balance:**
 \`Balance\` or \`My portfolio\`
 
@@ -1062,5 +1068,5 @@ export function getHelpMessage(): string {
 \`Transfer 0.5 SOL to [wallet address]\`
 
 All swaps are MEV-protected.
-DCA vaults can be cancelled anytime with full fund recovery.`;
+DCA & Limit Orders can be cancelled anytime with full fund recovery.`;
 }

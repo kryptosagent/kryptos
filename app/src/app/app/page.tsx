@@ -7,7 +7,14 @@ import {
   createDcaVault, 
   withdrawDcaVault,
   closeDcaVault,
-  getDcaVaultInfo 
+  getDcaVaultInfo,
+  createLimitOrder,
+  withdrawIntent,
+  closeIntent,
+  getUserIntentVaults,
+  TriggerType,
+  IntentStatus,
+  IntentVaultInfo
 } from '@/lib/kryptos-contract';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { 
@@ -823,6 +830,191 @@ Connect your wallet to start!`,
         });
         break;
       }
+
+      case 'limit_order': {
+        const { amount, fromTokenRaw, toTokenRaw, fromMint, toMint, triggerPrice, triggerType, expiryHours } = command.params;
+        
+        if (!connected || !publicKey) {
+          updateMessage(messageId, {
+            content: '❌ Please connect your wallet first.',
+            status: 'error',
+          });
+          return;
+        }
+
+        if (!fromMint) {
+          updateMessage(messageId, {
+            content: `❌ Unknown token: \`${fromTokenRaw}\`\n\n${getSupportedTokensHelp()}`,
+            status: 'error',
+          });
+          return;
+        }
+        
+        if (!toMint) {
+          updateMessage(messageId, {
+            content: `❌ Unknown token: \`${toTokenRaw}\`\n\n${getSupportedTokensHelp()}`,
+            status: 'error',
+          });
+          return;
+        }
+
+        updateMessage(messageId, { content: 'Looking up token info...', status: 'thinking' });
+        
+        const [fromTokenInfo, toTokenInfo] = await Promise.all([
+          getTokenInfo(fromMint),
+          getTokenInfo(toMint),
+        ]);
+
+        if (!fromTokenInfo || !toTokenInfo) {
+          updateMessage(messageId, {
+            content: `❌ Could not find token info for limit order setup.`,
+            status: 'error',
+          });
+          return;
+        }
+
+        const triggerTypeLabel = triggerType === 'above' ? 'rises above' : 'drops below';
+        const expiry = expiryHours || 24;
+
+        let limitMsg = `📊 **Limit Order Preview**\n\n`;
+        limitMsg += `**Action:** Swap ${amount} ${fromTokenInfo.symbol} → ${toTokenInfo.symbol}\n`;
+        limitMsg += `**Trigger:** When ${toTokenInfo.symbol} price ${triggerTypeLabel} $${triggerPrice}\n`;
+        limitMsg += `**Expires:** ${expiry} hours\n\n`;
+        limitMsg += `**How it works:**\n`;
+        limitMsg += `• Funds locked in secure vault\n`;
+        limitMsg += `• Keeper monitors price 24/7\n`;
+        limitMsg += `• Auto-executes when condition met\n`;
+        limitMsg += `• Cancel anytime to get funds back\n\n`;
+        limitMsg += `Type **confirm** to create order or **cancel** to abort.`;
+
+        updateMessage(messageId, {
+          content: limitMsg,
+          status: 'confirming',
+          pendingAction: {
+            command,
+            fromToken: fromTokenInfo,
+            toToken: toTokenInfo,
+          },
+        });
+        break;
+      }
+
+      case 'list_limit_orders': {
+        if (!connected || !publicKey) {
+          updateMessage(messageId, {
+            content: '❌ Please connect your wallet first.',
+            status: 'error',
+          });
+          return;
+        }
+
+        updateMessage(messageId, { content: 'Checking your limit orders...', status: 'thinking' });
+
+        try {
+          const vaults = await getUserIntentVaults(connection, publicKey);
+          
+          if (vaults.length === 0) {
+            updateMessage(messageId, {
+              content: `📋 **Your Limit Orders**\n\nNo active limit orders found.\n\n**Create one:**\n\`Buy SOL when price drops to $200\`\n\`Sell 1 SOL when price hits $250\``,
+              status: 'done',
+            });
+            return;
+          }
+
+          let listMsg = `📋 **Your Limit Orders**\n\n`;
+          
+          for (const vault of vaults) {
+            const triggerTypeLabel = vault.triggerType === TriggerType.PriceAbove ? '>' : '<';
+            const triggerPriceUsd = parseInt(vault.triggerPrice) / 1_000_000;
+            const statusLabel = ['Monitoring', 'Triggered', 'Executing', 'Executed', 'Expired', 'Cancelled'][vault.status];
+            const statusEmoji = vault.status === IntentStatus.Monitoring ? '👀' : 
+                               vault.status === IntentStatus.Executed ? '✅' : 
+                               vault.status === IntentStatus.Expired ? '⏰' : 
+                               vault.status === IntentStatus.Cancelled ? '❌' : '🔄';
+            
+            listMsg += `${statusEmoji} **Order #${vault.nonce.slice(-6)}**\n`;
+            listMsg += `Trigger: ${triggerTypeLabel} $${triggerPriceUsd.toFixed(2)}\n`;
+            listMsg += `Status: ${statusLabel}\n`;
+            listMsg += `Expires: ${vault.expiresAt.toLocaleString()}\n`;
+            listMsg += `Vault: \`${formatAddress(vault.address)}\`\n\n`;
+          }
+
+          listMsg += `**Commands:**\n`;
+          listMsg += `• \`Cancel limit order\` - Cancel & get funds back\n`;
+
+          updateMessage(messageId, { content: listMsg, status: 'done' });
+        } catch (error: any) {
+          updateMessage(messageId, {
+            content: `❌ Error fetching limit orders: ${error.message}`,
+            status: 'error',
+          });
+        }
+        break;
+      }
+
+      case 'cancel_limit_order': {
+        if (!connected || !publicKey) {
+          updateMessage(messageId, {
+            content: '❌ Please connect your wallet first.',
+            status: 'error',
+          });
+          return;
+        }
+
+        updateMessage(messageId, { content: 'Looking up your limit orders...', status: 'thinking' });
+
+        try {
+          const vaults = await getUserIntentVaults(connection, publicKey);
+          const activeVaults = vaults.filter(v => v.status === IntentStatus.Monitoring);
+          
+          if (activeVaults.length === 0) {
+            updateMessage(messageId, {
+              content: `📋 **No Active Limit Orders**\n\nYou don't have any active limit orders to cancel.`,
+              status: 'done',
+            });
+            return;
+          }
+
+          if (activeVaults.length === 1) {
+            const vault = activeVaults[0];
+            const triggerPriceUsd = parseInt(vault.triggerPrice) / 1_000_000;
+            
+            let confirmMsg = `🗑️ **Cancel Limit Order**\n\n`;
+            confirmMsg += `**Vault:** \`${formatAddress(vault.address)}\`\n`;
+            confirmMsg += `**Trigger:** $${triggerPriceUsd.toFixed(2)}\n\n`;
+            confirmMsg += `This will:\n`;
+            confirmMsg += `• Return your funds to wallet\n`;
+            confirmMsg += `• Cancel the order permanently\n\n`;
+            confirmMsg += `Type **confirm** to cancel or **cancel** to abort.`;
+
+            updateMessage(messageId, {
+              content: confirmMsg,
+              status: 'confirming',
+              pendingAction: {
+                command: { ...command, params: { ...command.params, vaultAddress: vault.address } },
+              },
+            });
+            return;
+          }
+
+          let listMsg = `📋 **Active Limit Orders**\n\nYou have ${activeVaults.length} active orders:\n\n`;
+          
+          for (const vault of activeVaults) {
+            const triggerPriceUsd = parseInt(vault.triggerPrice) / 1_000_000;
+            listMsg += `• Vault: \`${formatAddress(vault.address)}\` - Trigger: $${triggerPriceUsd.toFixed(2)}\n`;
+          }
+
+          listMsg += `\nSpecify which order to cancel by vault address.`;
+
+          updateMessage(messageId, { content: listMsg, status: 'done' });
+        } catch (error: any) {
+          updateMessage(messageId, {
+            content: `❌ Error: ${error.message}`,
+            status: 'error',
+          });
+        }
+        break;
+      }
       
       default: {
         updateMessage(messageId, {
@@ -1093,6 +1285,118 @@ Connect your wallet to start!`,
         // Auto refresh after 2 seconds
         setTimeout(() => window.location.reload(), 2000);
       }
+    } else if (command.type === 'limit_order' && fromToken && toToken) {
+      // Create limit order
+      const { amount, fromMint, toMint, triggerPrice, triggerType, expiryHours } = command.params;
+      
+      try {
+        const result = await createLimitOrder(
+          connection,
+          { publicKey, signTransaction },
+          {
+            inputMint: new PublicKey(fromMint),
+            outputMint: new PublicKey(toMint),
+            amount,
+            tokenDecimals: fromToken.decimals,
+            triggerPrice,
+            triggerType: triggerType === 'above' ? TriggerType.PriceAbove : TriggerType.PriceBelow,
+            expiryHours: expiryHours || 24,
+          }
+        );
+        
+        if (result.success) {
+          updateMessage(messageId, {
+            content: `✅ **Limit Order Created!**\n\n**Vault:** \`${result.vaultAddress}\`\n**Amount:** ${amount} ${fromToken.symbol}\n**Target:** ${toToken.symbol}\n**Trigger:** $${triggerPrice}\n**Expires:** ${expiryHours || 24} hours\n\nThe keeper will monitor and execute when price target is hit.\n\n🔄 Refreshing in 2s...`,
+            status: 'done',
+            txSignature: result.signature,
+          });
+          
+          // Record to session history
+          addSessionTransaction({
+            type: 'limit_order' as any,
+            status: 'success',
+            signature: result.signature!,
+            details: {
+              fromToken: fromToken.symbol,
+              toToken: toToken.symbol,
+              fromAmount: amount,
+            },
+          });
+          
+          // Auto refresh after 2 seconds
+          setTimeout(() => window.location.reload(), 2000);
+        } else {
+          updateMessage(messageId, {
+            content: `❌ **Limit Order Failed**\n\n${result.error}\n\n🔄 Refreshing in 2s...`,
+            status: 'error',
+          });
+          
+          // Auto refresh after 2 seconds
+          setTimeout(() => window.location.reload(), 2000);
+        }
+      } catch (error: any) {
+        updateMessage(messageId, {
+          content: `❌ **Limit Order Failed**\n\n${error.message}\n\n🔄 Refreshing in 2s...`,
+          status: 'error',
+        });
+        
+        // Auto refresh after 2 seconds
+        setTimeout(() => window.location.reload(), 2000);
+      }
+    } else if (command.type === 'cancel_limit_order') {
+      // Cancel limit order
+      const { vaultAddress } = command.params;
+      
+      if (!vaultAddress) {
+        updateMessage(messageId, {
+          content: `❌ No vault address specified.`,
+          status: 'error',
+        });
+        return;
+      }
+      
+      try {
+        // First withdraw funds
+        const withdrawResult = await withdrawIntent(
+          connection,
+          { publicKey, signTransaction },
+          new PublicKey(vaultAddress)
+        );
+        
+        if (withdrawResult.success) {
+          // Then close the vault
+          const closeResult = await closeIntent(
+            connection,
+            { publicKey, signTransaction },
+            new PublicKey(vaultAddress)
+          );
+          
+          updateMessage(messageId, {
+            content: `✅ **Limit Order Cancelled!**\n\nYour funds have been returned to your wallet.\n\n🔄 Refreshing in 2s...`,
+            status: 'done',
+            txSignature: withdrawResult.signature,
+          });
+          
+          // Auto refresh after 2 seconds
+          setTimeout(() => window.location.reload(), 2000);
+        } else {
+          updateMessage(messageId, {
+            content: `❌ **Cancel Failed**\n\n${withdrawResult.error}\n\n🔄 Refreshing in 2s...`,
+            status: 'error',
+          });
+          
+          // Auto refresh after 2 seconds
+          setTimeout(() => window.location.reload(), 2000);
+        }
+      } catch (error: any) {
+        updateMessage(messageId, {
+          content: `❌ **Cancel Failed**\n\n${error.message}\n\n🔄 Refreshing in 2s...`,
+          status: 'error',
+        });
+        
+        // Auto refresh after 2 seconds
+        setTimeout(() => window.location.reload(), 2000);
+      }
     }
   };
 
@@ -1273,6 +1577,51 @@ Connect your wallet to start!`,
               toTokenRaw: toToken || null,
               fromMint: fromToken ? (resolveToken(fromToken) || fromToken) : null,
               toMint: toToken ? (resolveToken(toToken) || toToken) : null,
+            },
+            raw: userInput,
+          };
+          await processCommand(command, messageId);
+          break;
+        }
+
+        case 'limit_order': {
+          const { amount, fromToken, toToken, triggerPrice, triggerType, expiryHours } = llmResult.params;
+          
+          const command: ParsedCommand = {
+            type: 'limit_order',
+            params: {
+              amount,
+              fromTokenRaw: fromToken,
+              toTokenRaw: toToken,
+              fromMint: resolveToken(fromToken) || fromToken,
+              toMint: resolveToken(toToken) || toToken,
+              triggerPrice,
+              triggerType: triggerType || 'below',
+              expiryHours: expiryHours || 24,
+            },
+            raw: userInput,
+          };
+          await processCommand(command, messageId);
+          break;
+        }
+
+        case 'list_limit_orders': {
+          const command: ParsedCommand = {
+            type: 'list_limit_orders',
+            params: {},
+            raw: userInput,
+          };
+          await processCommand(command, messageId);
+          break;
+        }
+
+        case 'cancel_limit_order': {
+          const { vaultAddress } = llmResult.params || {};
+          
+          const command: ParsedCommand = {
+            type: 'cancel_limit_order',
+            params: {
+              vaultAddress: vaultAddress || null,
             },
             raw: userInput,
           };
