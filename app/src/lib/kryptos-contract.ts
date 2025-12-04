@@ -1122,7 +1122,7 @@ export async function getUserIntentVaults(
     // Get all program accounts with IntentVault discriminator
     const accounts = await connection.getProgramAccounts(KRYPTOS_PROGRAM_ID, {
       filters: [
-        { memcmp: { offset: 0, bytes: INTENT_VAULT_DISCRIMINATOR.toString('base64') } },
+        { memcmp: { offset: 0, bytes: Buffer.from(INTENT_VAULT_DISCRIMINATOR).toString('base64'), encoding: 'base64' } },
         { memcmp: { offset: 8, bytes: authority.toBase58() } },
       ],
     });
