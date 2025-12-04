@@ -12,7 +12,8 @@ import {
   Code,
   Lock,
   HelpCircle,
-  Mail
+  Mail,
+  Github
 } from 'lucide-react';
 
 // Sidebar navigation items
@@ -747,7 +748,7 @@ const docsContent: Record<string, { title: string; content: React.ReactNode }> =
                   </svg>
                 </div>
                 <div>
-                  <h4 className="text-white font-semibold">X (Twitter)</h4>
+                  <h4 className="text-white font-semibold">X</h4>
                   <p className="text-zinc-500 text-sm">@kryptos_fi</p>
                 </div>
               </div>
@@ -768,6 +769,27 @@ const docsContent: Record<string, { title: string; content: React.ReactNode }> =
                 <div>
                   <h4 className="text-white font-semibold">Email</h4>
                   <p className="text-zinc-500 text-sm">hello@kryptosagent.xyz</p>
+                </div>
+              </div>
+              <ExternalLink className="w-5 h-5 text-zinc-500 group-hover:text-white transition-colors" />
+            </div>
+          </a>
+
+          {/* GitHub */}
+          <a 
+            href="https://github.com/kryptosagent/kryptos" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="bg-zinc-900 border border-zinc-800 rounded-xl p-6 hover:border-zinc-700 transition-colors group"
+          >
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-zinc-800 rounded-xl flex items-center justify-center group-hover:bg-zinc-700 transition-colors">
+                  <Github className="w-6 h-6" />
+                </div>
+                <div>
+                  <h4 className="text-white font-semibold">GitHub</h4>
+                  <p className="text-zinc-500 text-sm">kryptosagent/kryptos</p>
                 </div>
               </div>
               <ExternalLink className="w-5 h-5 text-zinc-500 group-hover:text-white transition-colors" />
@@ -842,34 +864,8 @@ export default function DocsPage() {
             
             {/* Nav Links */}
             <div className="flex items-center gap-4">
-              <Link href="/" className="text-zinc-400 hover:text-white transition-colors text-sm hidden md:block">
-                Home
-              </Link>
-              
-              {/* Social Links */}
-              <a 
-                href="https://x.com/kryptos_fi" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-zinc-400 hover:text-white transition-colors hidden md:block"
-                title="Follow on X"
-              >
-                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">
-                  <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-                </svg>
-              </a>
-              <a 
-                href="https://solscan.io/account/F7gyohBLEMJFkMtQDkhqtEZmpABNPE3t32aL8LTXYjy2" 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="text-zinc-400 hover:text-white transition-colors hidden md:block"
-                title="View on Solscan"
-              >
-                <ExternalLink className="w-5 h-5" />
-              </a>
-              
               <Link 
-                href="/chat" 
+                href="/app" 
                 className="px-4 py-2 bg-white text-zinc-900 rounded-lg text-sm font-medium hover:bg-zinc-200 transition-colors"
               >
                 Launch App

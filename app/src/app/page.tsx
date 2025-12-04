@@ -15,7 +15,8 @@ import {
   Terminal,
   Mail,
   FileText,
-  Bot
+  Bot,
+  Github
 } from 'lucide-react';
 
 // Feature card component
@@ -274,6 +275,9 @@ export default function LandingPage() {
             <div className="flex items-center gap-6">
               <a href="mailto:hello@kryptosagent.xyz" className="text-zinc-400 hover:text-white transition-colors">
                 <Mail className="w-5 h-5" />
+              </a>
+              <a href="https://github.com/kryptosagent/kryptos" target="_blank" rel="noopener noreferrer" className="text-zinc-400 hover:text-white transition-colors">
+                <Github className="w-5 h-5" />
               </a>
               <a href="https://x.com/@kryptos_fi" target="_blank" rel="noopener noreferrer" className="text-zinc-400 hover:text-white transition-colors">
                 <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor">

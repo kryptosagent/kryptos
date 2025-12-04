@@ -184,7 +184,7 @@ INTENT_CHECK_INTERVAL=30
 
 ### Responsible Disclosure
 
-Found a vulnerability? Please email [security@kryptosagent.xyz](mailto:security@kryptosagent.xyz)
+Found a vulnerability? Please email [hello@kryptosagent.xyz](mailto:hello@kryptosagent.xyz)
 
 ## Roadmap
 
