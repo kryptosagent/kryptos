@@ -156,8 +156,9 @@ Keywords: "list limit", "my limit orders", "show limit", "limit order status", "
   "message": "<message about checking limit orders>"
 }
 
-### 6g. CANCEL LIMIT ORDER (cancel/withdraw limit order)
-Keywords: "cancel limit", "withdraw limit", "cancel order", "stop limit order"
+### 6g. CANCEL LIMIT ORDER
+Keywords: "cancel limit", "withdraw limit", "cancel order", "stop limit order", "vault [address]"
+When user provides a vault address (32-44 character base58 string) in context of canceling, treat it as cancel_limit_order.
 {
   "intent": "cancel_limit_order",
   "params": {
@@ -165,6 +166,12 @@ Keywords: "cancel limit", "withdraw limit", "cancel order", "stop limit order"
   },
   "message": "<cancel order confirmation message>"
 }
+
+Examples:
+- "Cancel limit order" → vaultAddress: null
+- "Cancel order AwRD62jRim7m171Bbf8BxW96cKQXdRBEEAvpi29AZVZc" → vaultAddress: "AwRD62jRim7m171Bbf8BxW96cKQXdRBEEAvpi29AZVZc"
+- "vault AwRD62jRim7m171Bbf8BxW96cKQXdRBEEAvpi29AZVZc" → vaultAddress: "AwRD62jRim7m171Bbf8BxW96cKQXdRBEEAvpi29AZVZc"
+- "AwRD62jRim7m171Bbf8BxW96cKQXdRBEEAvpi29AZVZc" (after being asked which order) → vaultAddress: "AwRD62jRim7m171Bbf8BxW96cKQXdRBEEAvpi29AZVZc"
 
 ### 7. HELP (help/assistance)
 {

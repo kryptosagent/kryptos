@@ -961,6 +961,30 @@ Connect your wallet to start!`,
           return;
         }
 
+        const { vaultAddress } = command.params;
+
+        // If vault address is provided, go directly to confirmation
+        if (vaultAddress) {
+          updateMessage(messageId, { content: 'Preparing to cancel order...', status: 'thinking' });
+          
+          let confirmMsg = `🗑️ **Cancel Limit Order**\n\n`;
+          confirmMsg += `**Vault:** \`${formatAddress(vaultAddress)}\`\n\n`;
+          confirmMsg += `This will:\n`;
+          confirmMsg += `• Return your funds to wallet\n`;
+          confirmMsg += `• Cancel the order permanently\n\n`;
+          confirmMsg += `Type **confirm** to cancel or **cancel** to abort.`;
+
+          updateMessage(messageId, {
+            content: confirmMsg,
+            status: 'confirming',
+            pendingAction: {
+              command,
+            },
+          });
+          return;
+        }
+
+        // No vault address provided, list all active orders
         updateMessage(messageId, { content: 'Looking up your limit orders...', status: 'thinking' });
 
         try {
@@ -1004,7 +1028,7 @@ Connect your wallet to start!`,
             listMsg += `• Vault: \`${formatAddress(vault.address)}\` - Trigger: $${triggerPriceUsd.toFixed(2)}\n`;
           }
 
-          listMsg += `\nSpecify which order to cancel by vault address.`;
+          listMsg += `\n**To cancel**, type:\n\`Cancel order [full vault address]\``;
 
           updateMessage(messageId, { content: listMsg, status: 'done' });
         } catch (error: any) {

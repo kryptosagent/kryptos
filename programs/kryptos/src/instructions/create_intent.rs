@@ -137,6 +137,7 @@ pub fn handler(ctx: Context<CreateIntent>, params: CreateIntentParams) -> Result
     // Initialize intent vault
     let intent_vault = &mut ctx.accounts.intent_vault;
     intent_vault.authority = ctx.accounts.authority.key();
+    intent_vault.nonce = params.nonce;
     intent_vault.intent_type = intent_type;
     intent_vault.input_mint = ctx.accounts.input_mint.key();
     intent_vault.output_mint = ctx.accounts.output_mint.key();

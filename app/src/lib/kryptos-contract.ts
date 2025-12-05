@@ -886,21 +886,44 @@ export async function withdrawIntent(
   try {
     const authority = wallet.publicKey;
     
-    // Get intent vault account to find input mint
+    // Get intent vault account to find input mint and input vault
     const accountInfo = await connection.getAccountInfo(intentVaultAddress);
     if (!accountInfo) {
       return { success: false, error: 'Intent vault not found.' };
     }
     
-    // Parse to get input_mint (offset: 8 discriminator + 32 authority + 8 nonce + 1 intent_type = 49)
+    // Parse account data using same logic as parseIntentVault
     const data = new Uint8Array(accountInfo.data);
-    const inputMint = new PublicKey(data.slice(49, 81));
     
-    // Derive vault input token PDA
-    const [vaultInputToken] = deriveIntentInputVaultPDA(intentVaultAddress);
+    // Log raw data for debugging
+    console.log('IntentVault data size:', data.length);
+    console.log('Discriminator:', Array.from(data.slice(0, 8)));
+    
+    // Offset calculations:
+    // 0-8: discriminator (8 bytes)
+    // 8-40: authority (32 bytes)
+    // 40-48: nonce (8 bytes)
+    // 48: intent_type (1 byte)
+    // 49-81: input_mint (32 bytes)
+    // 81-113: output_mint (32 bytes)
+    // 113-145: input_vault (32 bytes)
+    
+    const inputMint = new PublicKey(data.slice(49, 81));
+    const vaultInputToken = new PublicKey(data.slice(113, 145));
+    
+    console.log('Input Mint:', inputMint.toBase58());
+    console.log('Vault Input Token:', vaultInputToken.toBase58());
     
     // Get user's input token ATA
     const userInputToken = await getAssociatedTokenAddress(inputMint, authority);
+    console.log('User Input Token:', userInputToken.toBase58());
+    
+    // Verify vault input token exists
+    const vaultTokenInfo = await connection.getAccountInfo(vaultInputToken);
+    if (!vaultTokenInfo) {
+      return { success: false, error: 'Vault input token account not found.' };
+    }
+    console.log('Vault Input Token exists, owner:', new PublicKey(vaultTokenInfo.owner).toBase58());
     
     // Build transaction
     const transaction = new Transaction();
@@ -909,6 +932,7 @@ export async function withdrawIntent(
     try {
       await getAccount(connection, userInputToken);
     } catch {
+      console.log('Creating user ATA...');
       transaction.add(
         createAssociatedTokenAccountInstruction(
           authority,
@@ -937,10 +961,23 @@ export async function withdrawIntent(
     transaction.recentBlockhash = blockhash;
     transaction.feePayer = authority;
     
-    // Sign and send
+    // Sign and send with skipPreflight to see actual error
     const signedTx = await wallet.signTransaction(transaction);
-    const signature = await connection.sendRawTransaction(signedTx.serialize());
-    await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+    const signature = await connection.sendRawTransaction(signedTx.serialize(), {
+      skipPreflight: true,
+    });
+    
+    // Wait for confirmation
+    const confirmation = await connection.confirmTransaction({ 
+      signature, 
+      blockhash, 
+      lastValidBlockHeight 
+    }, 'confirmed');
+    
+    if (confirmation.value.err) {
+      console.error('Transaction error:', confirmation.value.err);
+      return { success: false, signature, error: JSON.stringify(confirmation.value.err) };
+    }
     
     return { success: true, signature };
   } catch (error: any) {
@@ -965,8 +1002,15 @@ export async function closeIntent(
   try {
     const authority = wallet.publicKey;
     
-    // Derive vault input token PDA
-    const [vaultInputToken] = deriveIntentInputVaultPDA(intentVaultAddress);
+    // Get intent vault account to find input vault address
+    const accountInfo = await connection.getAccountInfo(intentVaultAddress);
+    if (!accountInfo) {
+      return { success: false, error: 'Intent vault not found.' };
+    }
+    
+    // Parse input_vault from account data (offset 113-145)
+    const data = new Uint8Array(accountInfo.data);
+    const vaultInputToken = new PublicKey(data.slice(113, 145));
     
     // Build transaction
     const transaction = new Transaction();
@@ -1119,19 +1163,32 @@ export async function getUserIntentVaults(
   authority: PublicKey
 ): Promise<IntentVaultInfo[]> {
   try {
-    // Get all program accounts with IntentVault discriminator
+    // Get all program accounts filtered by data size and authority
     const accounts = await connection.getProgramAccounts(KRYPTOS_PROGRAM_ID, {
       filters: [
-        { memcmp: { offset: 0, bytes: Buffer.from(INTENT_VAULT_DISCRIMINATOR).toString('base64'), encoding: 'base64' } },
+        { dataSize: 288 }, // IntentVault account size
         { memcmp: { offset: 8, bytes: authority.toBase58() } },
       ],
     });
     
     const vaults: IntentVaultInfo[] = [];
+    const expectedDiscriminator = [57, 85, 33, 184, 254, 191, 96, 45];
     
     for (const account of accounts) {
       try {
         const data = new Uint8Array(account.account.data);
+        
+        // Verify discriminator client-side
+        let isIntentVault = true;
+        for (let i = 0; i < 8; i++) {
+          if (data[i] !== expectedDiscriminator[i]) {
+            isIntentVault = false;
+            break;
+          }
+        }
+        
+        if (!isIntentVault) continue;
+        
         const vault = parseIntentVault(account.pubkey, data);
         vaults.push(vault);
       } catch (e) {
