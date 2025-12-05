@@ -1,7 +1,7 @@
 // KRYPTOS Smart Contract Integration
 // Handles DCA vault creation and management
 
-import { Connection, PublicKey, Transaction, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
+import { Connection, PublicKey, Transaction, SystemProgram, SYSVAR_RENT_PUBKEY, SendOptions } from '@solana/web3.js';
 import { 
   TOKEN_PROGRAM_ID, 
   ASSOCIATED_TOKEN_PROGRAM_ID,
@@ -62,6 +62,64 @@ export interface DcaVaultInfo {
   isActive: boolean;
   nextExecution: Date | null;
   exists: boolean;
+}
+
+// ===========================================
+// PHANTOM-FRIENDLY WALLET INTERFACE
+// ===========================================
+
+// Extended wallet interface supporting both methods
+export interface PhantomWallet {
+  publicKey: PublicKey;
+  signTransaction: (tx: Transaction) => Promise<Transaction>;
+  signAndSendTransaction?: (tx: Transaction, options?: SendOptions) => Promise<{ signature: string }>;
+}
+
+// Helper: Send transaction with Phantom-friendly approach
+async function sendTransaction(
+  connection: Connection,
+  wallet: PhantomWallet,
+  transaction: Transaction,
+  options?: { skipPreflight?: boolean }
+): Promise<string> {
+  // Get latest blockhash
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  transaction.recentBlockhash = blockhash;
+  transaction.feePayer = wallet.publicKey;
+
+  // Simulate transaction first to catch errors early
+  const simulation = await connection.simulateTransaction(transaction);
+  if (simulation.value.err) {
+    console.error('Transaction simulation failed:', simulation.value.err);
+    throw new Error(`Simulation failed: ${JSON.stringify(simulation.value.err)}`);
+  }
+
+  let signature: string;
+
+  // Prefer signAndSendTransaction if available (Phantom recommended)
+  if (wallet.signAndSendTransaction) {
+    const result = await wallet.signAndSendTransaction(transaction, {
+      skipPreflight: options?.skipPreflight ?? false,
+      preflightCommitment: 'confirmed',
+    });
+    signature = result.signature;
+  } else {
+    // Fallback to signTransaction + sendRawTransaction
+    const signedTx = await wallet.signTransaction(transaction);
+    signature = await connection.sendRawTransaction(signedTx.serialize(), {
+      skipPreflight: options?.skipPreflight ?? false,
+      preflightCommitment: 'confirmed',
+    });
+  }
+
+  // Confirm transaction
+  await connection.confirmTransaction({
+    signature,
+    blockhash,
+    lastValidBlockHeight,
+  }, 'confirmed');
+
+  return signature;
 }
 
 // Derive DCA vault PDA
@@ -207,7 +265,7 @@ function calculateAmountPerTrade(
 // Create DCA vault
 export async function createDcaVault(
   connection: Connection,
-  wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction> },
+  wallet: PhantomWallet,
   inputMint: PublicKey,
   outputMint: PublicKey,
   params: DcaParams
@@ -278,26 +336,8 @@ export async function createDcaVault(
       data: instructionData,
     });
     
-    // Get latest blockhash
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-    transaction.recentBlockhash = blockhash;
-    transaction.feePayer = authority;
-    
-    // Sign transaction
-    const signedTx = await wallet.signTransaction(transaction);
-    
-    // Send transaction
-    const signature = await connection.sendRawTransaction(signedTx.serialize(), {
-      skipPreflight: false,
-      preflightCommitment: 'confirmed',
-    });
-    
-    // Confirm transaction
-    await connection.confirmTransaction({
-      signature,
-      blockhash,
-      lastValidBlockHeight,
-    }, 'confirmed');
+    // Send transaction using Phantom-friendly helper
+    const signature = await sendTransaction(connection, wallet, transaction);
     
     return {
       success: true,
@@ -314,6 +354,8 @@ export async function createDcaVault(
       errorMsg = 'Insufficient funds to create DCA vault. Make sure you have enough tokens and SOL for fees.';
     } else if (errorMsg.includes('already in use')) {
       errorMsg = 'A DCA vault already exists for this token pair. Withdraw or close the existing vault first.';
+    } else if (errorMsg.includes('User rejected')) {
+      errorMsg = 'Transaction was rejected by user.';
     }
     
     return {
@@ -326,7 +368,7 @@ export async function createDcaVault(
 // Withdraw from DCA vault
 export async function withdrawDcaVault(
   connection: Connection,
-  wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction> },
+  wallet: PhantomWallet,
   inputMint: PublicKey,
   outputMint: PublicKey
 ): Promise<CreateDcaResult> {
@@ -388,15 +430,8 @@ export async function withdrawDcaVault(
       data: WITHDRAW_DCA_DISCRIMINATOR,
     });
     
-    // Get latest blockhash
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-    transaction.recentBlockhash = blockhash;
-    transaction.feePayer = authority;
-    
-    // Sign and send
-    const signedTx = await wallet.signTransaction(transaction);
-    const signature = await connection.sendRawTransaction(signedTx.serialize());
-    await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+    // Send transaction using Phantom-friendly helper
+    const signature = await sendTransaction(connection, wallet, transaction);
     
     return { success: true, signature };
   } catch (error: any) {
@@ -408,6 +443,8 @@ export async function withdrawDcaVault(
       errorMsg = 'DCA vault not found for this token pair.';
     } else if (errorMsg.includes('NoFundsToWithdraw')) {
       errorMsg = 'No funds to withdraw. The vault may already be empty.';
+    } else if (errorMsg.includes('User rejected')) {
+      errorMsg = 'Transaction was rejected by user.';
     }
     
     return { success: false, error: errorMsg };
@@ -516,10 +553,9 @@ export async function getDcaVaultInfo(
   }
 }
 
-// Close DCA vault (reclaim rent after withdraw)
 export async function closeDcaVault(
   connection: Connection,
-  wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction> },
+  wallet: PhantomWallet,
   inputMint: PublicKey,
   outputMint: PublicKey
 ): Promise<CreateDcaResult> {
@@ -556,15 +592,8 @@ export async function closeDcaVault(
       data: CLOSE_DCA_DISCRIMINATOR,
     });
     
-    // Get latest blockhash
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-    transaction.recentBlockhash = blockhash;
-    transaction.feePayer = authority;
-    
-    // Sign and send
-    const signedTx = await wallet.signTransaction(transaction);
-    const signature = await connection.sendRawTransaction(signedTx.serialize());
-    await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+    // Send transaction using Phantom-friendly helper
+    const signature = await sendTransaction(connection, wallet, transaction);
     
     return { success: true, signature };
   } catch (error: any) {
@@ -576,6 +605,8 @@ export async function closeDcaVault(
       errorMsg = 'Cannot close vault: it still has remaining funds. Use "Withdraw DCA" first to get your funds back.';
     } else if (errorMsg.includes('AccountNotInitialized')) {
       errorMsg = 'DCA vault not found for this token pair.';
+    } else if (errorMsg.includes('User rejected')) {
+      errorMsg = 'Transaction was rejected by user.';
     }
     
     return { success: false, error: errorMsg };
@@ -755,7 +786,7 @@ function generateNonce(): BN {
 // Create Limit Order (Intent)
 export async function createLimitOrder(
   connection: Connection,
-  wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction> },
+  wallet: PhantomWallet,
   params: LimitOrderParams
 ): Promise<CreateDcaResult> {
   try {
@@ -835,26 +866,8 @@ export async function createLimitOrder(
       data: instructionData,
     });
     
-    // Get latest blockhash
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-    transaction.recentBlockhash = blockhash;
-    transaction.feePayer = authority;
-    
-    // Sign transaction
-    const signedTx = await wallet.signTransaction(transaction);
-    
-    // Send transaction
-    const signature = await connection.sendRawTransaction(signedTx.serialize(), {
-      skipPreflight: false,
-      preflightCommitment: 'confirmed',
-    });
-    
-    // Confirm transaction
-    await connection.confirmTransaction({
-      signature,
-      blockhash,
-      lastValidBlockHeight,
-    }, 'confirmed');
+    // Send transaction using Phantom-friendly helper
+    const signature = await sendTransaction(connection, wallet, transaction);
     
     return {
       success: true,
@@ -868,6 +881,8 @@ export async function createLimitOrder(
     
     if (errorMsg.includes('insufficient funds')) {
       errorMsg = 'Insufficient funds to create limit order. Make sure you have enough tokens and SOL for fees.';
+    } else if (errorMsg.includes('User rejected')) {
+      errorMsg = 'Transaction was rejected by user.';
     }
     
     return {
@@ -880,7 +895,7 @@ export async function createLimitOrder(
 // Withdraw from Intent vault
 export async function withdrawIntent(
   connection: Connection,
-  wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction> },
+  wallet: PhantomWallet,
   intentVaultAddress: PublicKey
 ): Promise<CreateDcaResult> {
   try {
@@ -956,28 +971,8 @@ export async function withdrawIntent(
       data: WITHDRAW_INTENT_DISCRIMINATOR,
     });
     
-    // Get latest blockhash
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-    transaction.recentBlockhash = blockhash;
-    transaction.feePayer = authority;
-    
-    // Sign and send with skipPreflight to see actual error
-    const signedTx = await wallet.signTransaction(transaction);
-    const signature = await connection.sendRawTransaction(signedTx.serialize(), {
-      skipPreflight: true,
-    });
-    
-    // Wait for confirmation
-    const confirmation = await connection.confirmTransaction({ 
-      signature, 
-      blockhash, 
-      lastValidBlockHeight 
-    }, 'confirmed');
-    
-    if (confirmation.value.err) {
-      console.error('Transaction error:', confirmation.value.err);
-      return { success: false, signature, error: JSON.stringify(confirmation.value.err) };
-    }
+    // Send transaction using Phantom-friendly helper (NO skipPreflight)
+    const signature = await sendTransaction(connection, wallet, transaction);
     
     return { success: true, signature };
   } catch (error: any) {
@@ -987,6 +982,8 @@ export async function withdrawIntent(
     
     if (errorMsg.includes('Unauthorized')) {
       errorMsg = 'You are not the owner of this intent vault.';
+    } else if (errorMsg.includes('User rejected')) {
+      errorMsg = 'Transaction was rejected by user.';
     }
     
     return { success: false, error: errorMsg };
@@ -996,7 +993,7 @@ export async function withdrawIntent(
 // Close Intent vault (reclaim rent after withdraw)
 export async function closeIntent(
   connection: Connection,
-  wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction> },
+  wallet: PhantomWallet,
   intentVaultAddress: PublicKey
 ): Promise<CreateDcaResult> {
   try {
@@ -1027,15 +1024,8 @@ export async function closeIntent(
       data: CLOSE_INTENT_DISCRIMINATOR,
     });
     
-    // Get latest blockhash
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
-    transaction.recentBlockhash = blockhash;
-    transaction.feePayer = authority;
-    
-    // Sign and send
-    const signedTx = await wallet.signTransaction(transaction);
-    const signature = await connection.sendRawTransaction(signedTx.serialize());
-    await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight }, 'confirmed');
+    // Send transaction using Phantom-friendly helper
+    const signature = await sendTransaction(connection, wallet, transaction);
     
     return { success: true, signature };
   } catch (error: any) {
@@ -1045,6 +1035,8 @@ export async function closeIntent(
     
     if (errorMsg.includes('IntentHasRemainingFunds')) {
       errorMsg = 'Cannot close: vault still has funds. Withdraw first.';
+    } else if (errorMsg.includes('User rejected')) {
+      errorMsg = 'Transaction was rejected by user.';
     }
     
     return { success: false, error: errorMsg };
