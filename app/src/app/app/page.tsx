@@ -86,7 +86,7 @@ function FormattedMessage({ content }: { content: string }) {
         return <strong key={i} className="font-semibold">{part.slice(2, -2)}</strong>;
       }
       if (part.startsWith('`') && part.endsWith('`')) {
-        return <code key={i} className="bg-zinc-800/50 px-1.5 py-0.5 rounded text-white text-sm font-mono">{part.slice(1, -1)}</code>;
+        return <code key={i} className="bg-zinc-800/50 px-1 md:px-1.5 py-0.5 rounded text-white text-xs md:text-sm font-mono break-all">{part.slice(1, -1)}</code>;
       }
       if (part.match(/\[.*?\]\(.*?\)/)) {
         const match = part.match(/\[(.*?)\]\((.*?)\)/);
@@ -97,7 +97,7 @@ function FormattedMessage({ content }: { content: string }) {
               href={match[2]} 
               target="_blank" 
               rel="noopener noreferrer"
-              className="text-white hover:text-zinc-300 underline inline-flex items-center gap-1"
+              className="text-white hover:text-zinc-300 underline inline-flex items-center gap-1 text-xs md:text-sm"
             >
               {match[1]}
               <ExternalLink className="w-3 h-3" />
@@ -112,7 +112,7 @@ function FormattedMessage({ content }: { content: string }) {
     });
   };
 
-  return <div className="whitespace-pre-wrap">{formatText(content)}</div>;
+  return <div className="whitespace-pre-wrap text-sm md:text-base">{formatText(content)}</div>;
 }
 
 // Chat message component
@@ -120,21 +120,21 @@ function ChatMessage({ message }: { message: Message }) {
   const isUser = message.role === 'user';
   
   return (
-    <div className={`flex gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
+    <div className={`flex gap-2 md:gap-3 ${isUser ? 'flex-row-reverse' : ''}`}>
       {/* Avatar */}
-      <div className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
+      <div className={`w-6 h-6 md:w-8 md:h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
         isUser ? 'bg-white/10' : 'bg-zinc-800'
       }`}>
         {isUser ? (
-          <User className="w-4 h-4 text-white" />
+          <User className="w-3 h-3 md:w-4 md:h-4 text-white" />
         ) : (
-          <Bot className="w-4 h-4 text-zinc-300" />
+          <Bot className="w-3 h-3 md:w-4 md:h-4 text-zinc-300" />
         )}
       </div>
       
       {/* Message bubble */}
-      <div className={`max-w-[80%] ${isUser ? 'items-end' : 'items-start'}`}>
-        <div className={`rounded-2xl px-4 py-3 ${
+      <div className={`max-w-[85%] md:max-w-[80%] ${isUser ? 'items-end' : 'items-start'}`}>
+        <div className={`rounded-2xl px-3 py-2 md:px-4 md:py-3 ${
         isUser 
           ? 'bg-white/10 text-white' 
           : message.status === 'error'
@@ -144,14 +144,14 @@ function ChatMessage({ message }: { message: Message }) {
           {/* Status indicator */}
           {message.status === 'thinking' && (
             <div className="flex items-center gap-2 text-zinc-300 mb-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-sm">Processing...</span>
+              <Loader2 className="w-3 h-3 md:w-4 md:h-4 animate-spin" />
+              <span className="text-xs md:text-sm">Processing...</span>
             </div>
           )}
           {message.status === 'executing' && (
             <div className="flex items-center gap-2 text-yellow-400 mb-2">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span className="text-sm">Executing transaction...</span>
+              <Loader2 className="w-3 h-3 md:w-4 md:h-4 animate-spin" />
+              <span className="text-xs md:text-sm">Executing transaction...</span>
             </div>
           )}
           
@@ -163,7 +163,7 @@ function ChatMessage({ message }: { message: Message }) {
               href={`https://solscan.io/tx/${message.txSignature}`}
               target="_blank"
               rel="noopener noreferrer"
-              className="mt-2 inline-flex items-center gap-1 text-white hover:text-zinc-300 text-sm"
+              className="mt-2 inline-flex items-center gap-1 text-white hover:text-zinc-300 text-xs md:text-sm"
             >
               View on Solscan
               <ExternalLink className="w-3 h-3" />
@@ -173,14 +173,14 @@ function ChatMessage({ message }: { message: Message }) {
           {/* Status icons */}
           {message.status === 'done' && (
             <div className="flex items-center gap-1 text-zinc-400 mt-2">
-              <CheckCircle2 className="w-4 h-4" />
-              <span className="text-sm">Completed</span>
+              <CheckCircle2 className="w-3 h-3 md:w-4 md:h-4" />
+              <span className="text-xs md:text-sm">Completed</span>
             </div>
           )}
           {message.status === 'error' && (
             <div className="flex items-center gap-1 text-red-400 mt-2">
-              <XCircle className="w-4 h-4" />
-              <span className="text-sm">Failed</span>
+              <XCircle className="w-3 h-3 md:w-4 md:h-4" />
+              <span className="text-xs md:text-sm">Failed</span>
             </div>
           )}
         </div>
@@ -1718,28 +1718,30 @@ Connect your wallet to start!`,
     <main className="h-screen bg-zinc-950 flex flex-col overflow-hidden">
       {/* Header - Fixed at top */}
       <header className="flex-shrink-0 border-b border-zinc-800 bg-zinc-950/80 backdrop-blur-sm z-50">
-        <div className="max-w-7xl mx-auto px-6 py-3 flex items-center justify-between">
-          <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <img src="/logo.png" alt="KRYPTOS" className="w-10 h-10" />
+        <div className="max-w-7xl mx-auto px-3 md:px-6 py-2 md:py-3 flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2 md:gap-3 hover:opacity-80 transition-opacity">
+            <img src="/logo.png" alt="KRYPTOS" className="w-7 h-7 md:w-10 md:h-10" />
             <div>
-              <h1 className="text-lg font-bold text-white">KRYPTOS</h1>
-              <p className="text-xs text-zinc-500">Private DeFi Agent</p>
+              <h1 className="text-sm md:text-lg font-bold text-white">KRYPTOS</h1>
+              <p className="text-[10px] md:text-xs text-zinc-500 hidden sm:block">Private DeFi Agent</p>
             </div>
           </Link>
           
-          <div className="flex items-center gap-4">
-            <div className="flex items-center gap-2 text-sm text-gray-400">
-              <div className="w-2 h-2 bg-white rounded-full animate-pulse"></div>
+          <div className="flex items-center gap-2 md:gap-4">
+            <div className="hidden sm:flex items-center gap-2 text-xs md:text-sm text-gray-400">
+              <div className="w-1.5 h-1.5 md:w-2 md:h-2 bg-white rounded-full animate-pulse"></div>
               Mainnet
             </div>
             <button
               onClick={() => setIsHistoryOpen(true)}
-              className="p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-500 hover:text-white"
+              className="p-1.5 md:p-2 hover:bg-zinc-800 rounded-lg transition-colors text-zinc-500 hover:text-white"
               title="Transaction History"
             >
-              <History className="w-5 h-5" />
+              <History className="w-4 h-4 md:w-5 md:h-5" />
             </button>
-            <WalletMultiButton className="!bg-white hover:!bg-zinc-200 !text-zinc-900 !rounded-xl !py-2 !px-4 !text-sm !font-medium" />
+            <div className="scale-75 md:scale-100 origin-right">
+              <WalletMultiButton className="!bg-white hover:!bg-zinc-200 !text-zinc-900 !rounded-xl !py-2 !px-4 !text-sm !font-medium" />
+            </div>
           </div>
         </div>
       </header>
@@ -1762,7 +1764,7 @@ Connect your wallet to start!`,
         </div>
         
         {/* Scrollable Content */}
-        <div className="max-w-7xl mx-auto px-6 py-6 space-y-4 relative z-10">
+        <div className="max-w-7xl mx-auto px-3 md:px-6 py-4 md:py-6 space-y-3 md:space-y-4 relative z-10">
           {messages.map(message => (
             <ChatMessage key={message.id} message={message} />
           ))}
@@ -1774,45 +1776,45 @@ Connect your wallet to start!`,
       <div className="flex-shrink-0 border-t border-zinc-800 bg-zinc-950 backdrop-blur-sm z-50">
         {/* Example Commands */}
         {messages.length <= 2 && (
-          <div className="max-w-7xl mx-auto px-6 pt-4">
-            <div className="flex items-center gap-2 text-gray-400 text-sm mb-2">
-              <Sparkles className="w-4 h-4" />
+          <div className="max-w-7xl mx-auto px-3 md:px-6 pt-3 md:pt-4">
+            <div className="flex items-center gap-2 text-gray-400 text-xs md:text-sm mb-2">
+              <Sparkles className="w-3 h-3 md:w-4 md:h-4" />
               Try these:
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-1.5 md:gap-2">
               {exampleCommands.map((cmd, i) => (
                 <button
                   key={i}
                   onClick={() => setInput(cmd)}
-                  className="px-3 py-2 bg-zinc-900/50 border border-zinc-800 rounded-lg text-sm text-zinc-300 hover:bg-zinc-800/50 hover:border-white/50 transition-colors"
+                  className="px-2 md:px-3 py-1.5 md:py-2 bg-zinc-900/50 border border-zinc-800 rounded-lg text-xs md:text-sm text-zinc-300 hover:bg-zinc-800/50 hover:border-white/50 transition-colors"
                 >
-                  {cmd.length > 40 ? cmd.slice(0, 37) + '...' : cmd}
+                  {cmd.length > 30 ? cmd.slice(0, 27) + '...' : cmd}
                 </button>
               ))}
             </div>
           </div>
         )}
         
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex gap-3">
+        <div className="max-w-7xl mx-auto px-3 md:px-6 py-3 md:py-4">
+          <div className="flex gap-2 md:gap-3">
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-              placeholder={connected ? "Swap 0.01 SOL to USDC (or paste contract address)" : "Connect wallet to start..."}
+              placeholder={connected ? "Swap 0.01 SOL to USDC..." : "Connect wallet to start..."}
               disabled={!connected || isProcessing}
-              className="flex-1 bg-zinc-900/50 border border-zinc-800 rounded-xl px-4 py-3 text-white placeholder-zinc-500 focus:outline-none focus:border-white/50 disabled:opacity-50"
+              className="flex-1 bg-zinc-900/50 border border-zinc-800 rounded-lg md:rounded-xl px-3 md:px-4 py-2.5 md:py-3 text-sm md:text-base text-white placeholder-zinc-500 focus:outline-none focus:border-white/50 disabled:opacity-50"
             />
             <button
               onClick={handleSend}
               disabled={!connected || !input.trim() || isProcessing}
-              className="px-4 py-3 bg-white hover:bg-zinc-200 disabled:bg-zinc-800 disabled:opacity-50 rounded-xl text-zinc-900 transition-colors"
+              className="px-3 md:px-4 py-2.5 md:py-3 bg-white hover:bg-zinc-200 disabled:bg-zinc-800 disabled:opacity-50 rounded-lg md:rounded-xl text-zinc-900 transition-colors"
             >
-              <Send className="w-5 h-5" />
+              <Send className="w-4 h-4 md:w-5 md:h-5" />
             </button>
           </div>
-          <div className="text-center text-xs text-gray-500 mt-2">
+          <div className="text-center text-[10px] md:text-xs text-gray-500 mt-2">
             Privacy and Private first • Supports any token via contract address
           </div>
         </div>

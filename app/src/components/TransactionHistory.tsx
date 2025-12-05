@@ -114,21 +114,21 @@ function TransactionItem({
   const getIcon = () => {
     const typeLower = type.toLowerCase();
     if (typeLower.includes('swap')) {
-      return <ArrowRightLeft className="w-4 h-4" />;
+      return <ArrowRightLeft className="w-3 h-3 sm:w-4 sm:h-4" />;
     }
     if (typeLower.includes('transfer') || typeLower.includes('send')) {
-      return <Send className="w-4 h-4" />;
+      return <Send className="w-3 h-3 sm:w-4 sm:h-4" />;
     }
     if (typeLower.includes('stake')) {
-      return <Clock className="w-4 h-4" />;
+      return <Clock className="w-3 h-3 sm:w-4 sm:h-4" />;
     }
     if (typeLower.includes('nft') || typeLower.includes('mint')) {
-      return <CheckCircle2 className="w-4 h-4" />;
+      return <CheckCircle2 className="w-3 h-3 sm:w-4 sm:h-4" />;
     }
     if (typeLower.includes('burn') || typeLower.includes('close')) {
-      return <XCircle className="w-4 h-4" />;
+      return <XCircle className="w-3 h-3 sm:w-4 sm:h-4" />;
     }
-    return <ArrowRightLeft className="w-4 h-4" />;
+    return <ArrowRightLeft className="w-3 h-3 sm:w-4 sm:h-4" />;
   };
   
   const getStatusIcon = () => {
@@ -158,11 +158,11 @@ function TransactionItem({
       href={`https://solscan.io/tx/${signature}`}
       target="_blank"
       rel="noopener noreferrer"
-      className={`block p-3 rounded-lg border transition-colors hover:bg-slate-700/50 ${getStatusColor()}`}
+      className={`block p-2 sm:p-3 rounded-lg border transition-colors hover:bg-slate-700/50 ${getStatusColor()}`}
     >
-      <div className="flex items-start gap-3">
+      <div className="flex items-start gap-2 sm:gap-3">
         {/* Icon */}
-        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
+        <div className={`w-7 h-7 sm:w-8 sm:h-8 rounded-lg flex items-center justify-center flex-shrink-0 ${
           status === 'success' ? 'bg-green-500/20 text-green-400' :
           status === 'failed' ? 'bg-red-500/20 text-red-400' :
           'bg-yellow-500/20 text-yellow-400'
@@ -172,25 +172,25 @@ function TransactionItem({
         
         {/* Content */}
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="font-medium text-white text-sm capitalize">{type}</span>
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            <span className="font-medium text-white text-xs sm:text-sm capitalize">{type}</span>
             {isSession && (
-              <span className="text-[10px] px-1.5 py-0.5 bg-cyan-500/20 text-cyan-400 rounded">
+              <span className="text-[8px] sm:text-[10px] px-1 sm:px-1.5 py-0.5 bg-cyan-500/20 text-cyan-400 rounded">
                 This session
               </span>
             )}
             {getStatusIcon()}
           </div>
-          <p className="text-xs text-gray-400 truncate mt-0.5">{description}</p>
-          <div className="flex items-center gap-2 mt-1">
-            <span className="text-[10px] text-gray-500">{formatTime(timestamp)}</span>
-            <span className="text-[10px] text-gray-600">•</span>
-            <span className="text-[10px] text-gray-500 font-mono">{formatAddress(signature, 4)}</span>
+          <p className="text-[10px] sm:text-xs text-gray-400 truncate mt-0.5">{description}</p>
+          <div className="flex items-center gap-1.5 sm:gap-2 mt-1">
+            <span className="text-[9px] sm:text-[10px] text-gray-500">{formatTime(timestamp)}</span>
+            <span className="text-[9px] sm:text-[10px] text-gray-600">•</span>
+            <span className="text-[9px] sm:text-[10px] text-gray-500 font-mono">{formatAddress(signature, 4)}</span>
           </div>
         </div>
         
         {/* Arrow */}
-        <ChevronRight className="w-4 h-4 text-gray-600 flex-shrink-0" />
+        <ChevronRight className="w-3 h-3 sm:w-4 sm:h-4 text-gray-600 flex-shrink-0" />
       </div>
     </a>
   );
@@ -325,27 +325,27 @@ export default function TransactionHistory({
       
       {/* Sidebar */}
       <div className={`
-        fixed right-0 top-0 h-full w-80 bg-gray-900 border-l border-slate-800 z-50
+        fixed right-0 top-0 h-full w-full sm:w-80 bg-gray-900 border-l border-slate-800 z-50
         transform transition-transform duration-300 ease-in-out
         ${isOpen ? 'translate-x-0' : 'translate-x-full'}
       `}>
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-800">
+        <div className="flex items-center justify-between p-3 sm:p-4 border-b border-slate-800">
           <div className="flex items-center gap-2">
-            <History className="w-5 h-5 text-cyan-400" />
-            <h2 className="font-semibold text-white">Transaction History</h2>
+            <History className="w-4 h-4 sm:w-5 sm:h-5 text-cyan-400" />
+            <h2 className="font-semibold text-white text-sm sm:text-base">Transaction History</h2>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             <button
               onClick={loadTransactions}
               disabled={isLoading}
-              className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-gray-400 hover:text-white disabled:opacity-50"
+              className="p-1.5 sm:p-2 hover:bg-slate-800 rounded-lg transition-colors text-gray-400 hover:text-white disabled:opacity-50"
             >
               <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
             </button>
             <button
               onClick={onClose}
-              className="p-2 hover:bg-slate-800 rounded-lg transition-colors text-gray-400 hover:text-white"
+              className="p-1.5 sm:p-2 hover:bg-slate-800 rounded-lg transition-colors text-gray-400 hover:text-white"
             >
               <X className="w-4 h-4" />
             </button>
@@ -353,9 +353,9 @@ export default function TransactionHistory({
         </div>
         
         {/* Content */}
-        <div className="h-[calc(100%-65px)] overflow-y-auto p-4 space-y-4">
+        <div className="h-[calc(100%-57px)] sm:h-[calc(100%-65px)] overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
           {!walletAddress ? (
-            <div className="text-center text-gray-500 py-8">
+            <div className="text-center text-gray-500 py-8 text-sm">
               Connect wallet to view history
             </div>
           ) : (
@@ -363,7 +363,7 @@ export default function TransactionHistory({
               {/* Session Transactions */}
               {sessionTransactions.length > 0 && (
                 <div>
-                  <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                  <h3 className="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
                     This Session
                   </h3>
                   <div className="space-y-2">
@@ -390,20 +390,20 @@ export default function TransactionHistory({
               
               {/* Blockchain Transactions */}
               <div>
-                <h3 className="text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
+                <h3 className="text-[10px] sm:text-xs font-medium text-gray-500 uppercase tracking-wider mb-2">
                   Recent Activity
                 </h3>
                 
                 {isLoading ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="w-6 h-6 animate-spin text-cyan-400" />
+                  <div className="flex items-center justify-center py-6 sm:py-8">
+                    <Loader2 className="w-5 h-5 sm:w-6 sm:h-6 animate-spin text-cyan-400" />
                   </div>
                 ) : error ? (
-                  <div className="text-center text-red-400 py-8 text-sm">
+                  <div className="text-center text-red-400 py-6 sm:py-8 text-xs sm:text-sm">
                     {error}
                   </div>
                 ) : heliusTransactions.length === 0 ? (
-                  <div className="text-center text-gray-500 py-8 text-sm">
+                  <div className="text-center text-gray-500 py-6 sm:py-8 text-xs sm:text-sm">
                     No recent transactions
                   </div>
                 ) : (
