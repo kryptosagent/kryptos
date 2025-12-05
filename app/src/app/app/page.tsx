@@ -961,30 +961,8 @@ Connect your wallet to start!`,
           return;
         }
 
-        const { vaultAddress } = command.params;
+        const { vaultAddress, orderIndex } = command.params;
 
-        // If vault address is provided, go directly to confirmation
-        if (vaultAddress) {
-          updateMessage(messageId, { content: 'Preparing to cancel order...', status: 'thinking' });
-          
-          let confirmMsg = `🗑️ **Cancel Limit Order**\n\n`;
-          confirmMsg += `**Vault:** \`${formatAddress(vaultAddress)}\`\n\n`;
-          confirmMsg += `This will:\n`;
-          confirmMsg += `• Return your funds to wallet\n`;
-          confirmMsg += `• Cancel the order permanently\n\n`;
-          confirmMsg += `Type **confirm** to cancel or **cancel** to abort.`;
-
-          updateMessage(messageId, {
-            content: confirmMsg,
-            status: 'confirming',
-            pendingAction: {
-              command,
-            },
-          });
-          return;
-        }
-
-        // No vault address provided, list all active orders
         updateMessage(messageId, { content: 'Looking up your limit orders...', status: 'thinking' });
 
         try {
@@ -999,16 +977,14 @@ Connect your wallet to start!`,
             return;
           }
 
-          if (activeVaults.length === 1) {
-            const vault = activeVaults[0];
+          // If orderIndex provided (1, 2, 3...), use that
+          if (orderIndex && orderIndex >= 1 && orderIndex <= activeVaults.length) {
+            const vault = activeVaults[orderIndex - 1];
             const triggerPriceUsd = parseInt(vault.triggerPrice) / 1_000_000;
             
-            let confirmMsg = `🗑️ **Cancel Limit Order**\n\n`;
-            confirmMsg += `**Vault:** \`${formatAddress(vault.address)}\`\n`;
+            let confirmMsg = `🗑️ **Cancel Order #${orderIndex}**\n\n`;
             confirmMsg += `**Trigger:** $${triggerPriceUsd.toFixed(2)}\n\n`;
-            confirmMsg += `This will:\n`;
-            confirmMsg += `• Return your funds to wallet\n`;
-            confirmMsg += `• Cancel the order permanently\n\n`;
+            confirmMsg += `This will return your funds to wallet.\n\n`;
             confirmMsg += `Type **confirm** to cancel or **cancel** to abort.`;
 
             updateMessage(messageId, {
@@ -1021,14 +997,64 @@ Connect your wallet to start!`,
             return;
           }
 
-          let listMsg = `📋 **Active Limit Orders**\n\nYou have ${activeVaults.length} active orders:\n\n`;
-          
-          for (const vault of activeVaults) {
+          // If vault address provided, find and confirm
+          if (vaultAddress) {
+            const vault = activeVaults.find(v => v.address === vaultAddress);
+            if (!vault) {
+              updateMessage(messageId, {
+                content: `❌ Vault not found or already cancelled.`,
+                status: 'error',
+              });
+              return;
+            }
+            
             const triggerPriceUsd = parseInt(vault.triggerPrice) / 1_000_000;
-            listMsg += `• Vault: \`${formatAddress(vault.address)}\` - Trigger: $${triggerPriceUsd.toFixed(2)}\n`;
+            
+            let confirmMsg = `🗑️ **Cancel Limit Order**\n\n`;
+            confirmMsg += `**Trigger:** $${triggerPriceUsd.toFixed(2)}\n\n`;
+            confirmMsg += `This will return your funds to wallet.\n\n`;
+            confirmMsg += `Type **confirm** to cancel or **cancel** to abort.`;
+
+            updateMessage(messageId, {
+              content: confirmMsg,
+              status: 'confirming',
+              pendingAction: {
+                command,
+              },
+            });
+            return;
           }
 
-          listMsg += `\n**To cancel**, type:\n\`Cancel order [full vault address]\``;
+          // Only 1 order? Auto-select
+          if (activeVaults.length === 1) {
+            const vault = activeVaults[0];
+            const triggerPriceUsd = parseInt(vault.triggerPrice) / 1_000_000;
+            
+            let confirmMsg = `🗑️ **Cancel Limit Order**\n\n`;
+            confirmMsg += `**Trigger:** $${triggerPriceUsd.toFixed(2)}\n\n`;
+            confirmMsg += `This will return your funds to wallet.\n\n`;
+            confirmMsg += `Type **confirm** to cancel or **cancel** to abort.`;
+
+            updateMessage(messageId, {
+              content: confirmMsg,
+              status: 'confirming',
+              pendingAction: {
+                command: { ...command, params: { ...command.params, vaultAddress: vault.address } },
+              },
+            });
+            return;
+          }
+
+          // Multiple orders - show numbered list
+          let listMsg = `📋 **Active Limit Orders**\n\n`;
+          
+          for (let i = 0; i < activeVaults.length; i++) {
+            const vault = activeVaults[i];
+            const triggerPriceUsd = parseInt(vault.triggerPrice) / 1_000_000;
+            listMsg += `**${i + 1}.** Trigger: $${triggerPriceUsd.toFixed(2)}\n`;
+          }
+
+          listMsg += `\nReply with number to cancel (e.g., \`1\` or \`2\`)`;
 
           updateMessage(messageId, { content: listMsg, status: 'done' });
         } catch (error: any) {
@@ -1640,12 +1666,13 @@ Connect your wallet to start!`,
         }
 
         case 'cancel_limit_order': {
-          const { vaultAddress } = llmResult.params || {};
+          const { vaultAddress, orderIndex } = llmResult.params || {};
           
           const command: ParsedCommand = {
             type: 'cancel_limit_order',
             params: {
               vaultAddress: vaultAddress || null,
+              orderIndex: orderIndex || null,
             },
             raw: userInput,
           };

@@ -157,21 +157,24 @@ Keywords: "list limit", "my limit orders", "show limit", "limit order status", "
 }
 
 ### 6g. CANCEL LIMIT ORDER
-Keywords: "cancel limit", "withdraw limit", "cancel order", "stop limit order", "vault [address]"
-When user provides a vault address (32-44 character base58 string) in context of canceling, treat it as cancel_limit_order.
+Keywords: "cancel limit", "withdraw limit", "cancel order", "stop limit order"
+User can specify by:
+- Number: "cancel 1", "1", "cancel order 2"
+- Full vault address: "cancel AwRD62j..."
 {
   "intent": "cancel_limit_order",
   "params": {
-    "vaultAddress": "<vault address if specified, null otherwise>"
+    "orderIndex": <number 1-10 if user specifies a number, null otherwise>,
+    "vaultAddress": "<vault address if 32-44 char base58 string provided, null otherwise>"
   },
   "message": "<cancel order confirmation message>"
 }
 
 Examples:
-- "Cancel limit order" → vaultAddress: null
-- "Cancel order AwRD62jRim7m171Bbf8BxW96cKQXdRBEEAvpi29AZVZc" → vaultAddress: "AwRD62jRim7m171Bbf8BxW96cKQXdRBEEAvpi29AZVZc"
-- "vault AwRD62jRim7m171Bbf8BxW96cKQXdRBEEAvpi29AZVZc" → vaultAddress: "AwRD62jRim7m171Bbf8BxW96cKQXdRBEEAvpi29AZVZc"
-- "AwRD62jRim7m171Bbf8BxW96cKQXdRBEEAvpi29AZVZc" (after being asked which order) → vaultAddress: "AwRD62jRim7m171Bbf8BxW96cKQXdRBEEAvpi29AZVZc"
+- "cancel limit order" → orderIndex: null, vaultAddress: null
+- "cancel 1" or "1" → orderIndex: 1, vaultAddress: null
+- "cancel order 2" → orderIndex: 2, vaultAddress: null
+- "cancel AwRD62jRim7m171Bbf8BxW96cKQXdRBEEAvpi29AZVZc" → orderIndex: null, vaultAddress: "AwRD62jRim7m171Bbf8BxW96cKQXdRBEEAvpi29AZVZc"
 
 ### 7. HELP (help/assistance)
 {

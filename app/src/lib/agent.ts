@@ -1052,7 +1052,7 @@ export function getHelpMessage(): string {
 \`Buy SOL when price drops to $200\` - Buy at target price
 \`Sell 1 SOL when price hits $250\` - Sell at target price
 \`My limit orders\` - List active limit orders
-\`Cancel limit order\` - Cancel & get funds back
+\`Cancel limit order\` - Shows list, reply with number (1, 2, 3...)
 
 **Check Balance:**
 \`Balance\` or \`My portfolio\`
