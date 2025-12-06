@@ -311,7 +311,7 @@ Connect your wallet to start!`,
         
         if (!orderResult.success) {
           // Build detailed error message
-          let errorMsg = `❌ **Swap tidak tersedia**\n\n`;
+          let errorMsg = `❌ **Swap not available**\n\n`;
           errorMsg += `**From:** ${fromTokenInfo.symbol} (\`${formatAddress(fromMint)}\`)\n`;
           errorMsg += `**To:** ${toTokenInfo.symbol} (\`${formatAddress(toMint)}\`)\n\n`;
           
@@ -325,14 +325,14 @@ Connect your wallet to start!`,
           
           // Check if it's a pump.fun token that hasn't graduated
           if (toTokenInfo.launchpad === 'pump.fun' && !toTokenInfo.graduatedPool) {
-            errorMsg += `⚠️ **Token masih di bonding curve pump.fun**\n`;
-            errorMsg += `Jupiter belum support token ini. Tunggu token graduated ke Raydium atau swap langsung di pump.fun.\n`;
+            errorMsg += `⚠️ **Token still on pump.fun bonding curve**\n`;
+            errorMsg += `Jupiter doesn't support this token yet. Wait for token to graduate to Raydium or swap directly on pump.fun.\n`;
           } else if (toTokenInfo.liquidity && toTokenInfo.liquidity < 1000) {
-            errorMsg += `⚠️ **Liquidity sangat rendah** ($${toTokenInfo.liquidity?.toLocaleString() || '0'})\n`;
-            errorMsg += `Token mungkin tidak memiliki cukup liquidity untuk di-swap.\n`;
+            errorMsg += `⚠️ **Very low liquidity** ($${toTokenInfo.liquidity?.toLocaleString() || '0'})\n`;
+            errorMsg += `Token may not have enough liquidity to swap.\n`;
           } else {
-            errorMsg += `ℹ️ Jupiter Ultra mungkin belum support pair ini.\n`;
-            errorMsg += `Coba swap token populer seperti SOL, USDC, JUP, BONK.\n`;
+            errorMsg += `ℹ️ Jupiter Ultra may not support this pair yet.\n`;
+            errorMsg += `Try swapping popular tokens like SOL, USDC, JUP, BONK.\n`;
           }
           
           updateMessage(messageId, { content: errorMsg, status: 'error' });
@@ -1464,7 +1464,7 @@ Connect your wallet to start!`,
     addMessage({ role: 'user', content: userInput });
 
     // Clear old pending confirmations if user starts new command (not confirm/cancel)
-    if (!['confirm', 'cancel', 'yes', 'no', 'ok', 'oke', 'gas', 'lanjut', 'batal'].includes(userInput.toLowerCase().trim())) {
+    if (!['confirm', 'cancel', 'yes', 'no', 'ok'].includes(userInput.toLowerCase().trim())) {
       setMessages(prev => prev.map(m => 
         m.status === 'confirming' ? { ...m, status: 'done' as MessageStatus } : m
       ));
