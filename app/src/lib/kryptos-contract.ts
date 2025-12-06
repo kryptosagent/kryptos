@@ -3,13 +3,41 @@
 
 import { Connection, PublicKey, Transaction, SystemProgram, SYSVAR_RENT_PUBKEY, SendOptions } from '@solana/web3.js';
 import { 
-  TOKEN_PROGRAM_ID, 
+  TOKEN_PROGRAM_ID,
+  TOKEN_2022_PROGRAM_ID,
   ASSOCIATED_TOKEN_PROGRAM_ID,
   getAssociatedTokenAddress,
   createAssociatedTokenAccountInstruction,
   getAccount
 } from '@solana/spl-token';
 import BN from 'bn.js';
+
+// Helper: Detect token program for a mint
+async function detectTokenProgram(
+  connection: Connection,
+  mint: PublicKey
+): Promise<PublicKey> {
+  try {
+    const mintInfo = await connection.getAccountInfo(mint);
+    if (mintInfo?.owner.equals(TOKEN_2022_PROGRAM_ID)) {
+      return TOKEN_2022_PROGRAM_ID;
+    }
+    return TOKEN_PROGRAM_ID;
+  } catch {
+    return TOKEN_PROGRAM_ID;
+  }
+}
+
+// Helper: Get ATA with correct token program
+async function getAtaWithProgram(
+  connection: Connection,
+  mint: PublicKey,
+  owner: PublicKey
+): Promise<{ ata: PublicKey; programId: PublicKey }> {
+  const programId = await detectTokenProgram(connection, mint);
+  const ata = await getAssociatedTokenAddress(mint, owner, false, programId);
+  return { ata, programId };
+}
 
 // Program ID
 export const KRYPTOS_PROGRAM_ID = new PublicKey('F7gyohBLEMJFkMtQDkhqtEZmpABNPE3t32aL8LTXYjy2');
@@ -302,12 +330,16 @@ export async function createDcaVault(
     const [inputVault, inputVaultBump] = deriveInputVaultPDA(dcaVault);
     const [outputVault, outputVaultBump] = deriveOutputVaultPDA(dcaVault);
     
-    // Get user's input token ATA
-    const userInputToken = await getAssociatedTokenAddress(inputMint, authority);
+    // Detect token program for input mint (supports Token-2022)
+    const inputTokenProgram = await detectTokenProgram(connection, inputMint);
+    console.log('DCA: Input token program:', inputTokenProgram.equals(TOKEN_2022_PROGRAM_ID) ? 'Token-2022' : 'Standard');
+    
+    // Get user's input token ATA with correct program
+    const userInputToken = await getAssociatedTokenAddress(inputMint, authority, false, inputTokenProgram);
     
     // Check if user has the ATA
     try {
-      await getAccount(connection, userInputToken);
+      await getAccount(connection, userInputToken, undefined, inputTokenProgram);
     } catch {
       return {
         success: false,
@@ -343,7 +375,7 @@ export async function createDcaVault(
         { pubkey: inputVault, isSigner: false, isWritable: true },
         { pubkey: outputVault, isSigner: false, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: inputTokenProgram, isSigner: false, isWritable: false }, // Use detected program
         { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
         { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
       ],
@@ -395,40 +427,51 @@ export async function withdrawDcaVault(
     const [inputVault] = deriveInputVaultPDA(dcaVault);
     const [outputVault] = deriveOutputVaultPDA(dcaVault);
     
-    // Get user's token ATAs
-    const userInputToken = await getAssociatedTokenAddress(inputMint, authority);
-    const userOutputToken = await getAssociatedTokenAddress(outputMint, authority);
+    // Detect token programs for both mints (supports Token-2022)
+    const inputTokenProgram = await detectTokenProgram(connection, inputMint);
+    const outputTokenProgram = await detectTokenProgram(connection, outputMint);
+    console.log('Withdraw DCA: Input program:', inputTokenProgram.equals(TOKEN_2022_PROGRAM_ID) ? 'Token-2022' : 'Standard');
+    console.log('Withdraw DCA: Output program:', outputTokenProgram.equals(TOKEN_2022_PROGRAM_ID) ? 'Token-2022' : 'Standard');
+    
+    // Get user's token ATAs with correct programs
+    const userInputToken = await getAssociatedTokenAddress(inputMint, authority, false, inputTokenProgram);
+    const userOutputToken = await getAssociatedTokenAddress(outputMint, authority, false, outputTokenProgram);
     
     // Build transaction
     const transaction = new Transaction();
     
     // Check if user has input token ATA, if not create it
     try {
-      await getAccount(connection, userInputToken);
+      await getAccount(connection, userInputToken, undefined, inputTokenProgram);
     } catch {
       transaction.add(
         createAssociatedTokenAccountInstruction(
           authority,
           userInputToken,
           authority,
-          inputMint
+          inputMint,
+          inputTokenProgram
         )
       );
     }
     
     // Check if user has output token ATA, if not create it
     try {
-      await getAccount(connection, userOutputToken);
+      await getAccount(connection, userOutputToken, undefined, outputTokenProgram);
     } catch {
       transaction.add(
         createAssociatedTokenAccountInstruction(
           authority,
           userOutputToken,
           authority,
-          outputMint
+          outputMint,
+          outputTokenProgram
         )
       );
     }
+    
+    // Use input token program for the instruction
+    const tokenProgram = inputTokenProgram;
     
     // Add withdraw_dca instruction
     transaction.add({
@@ -439,7 +482,7 @@ export async function withdrawDcaVault(
         { pubkey: outputVault, isSigner: false, isWritable: true },
         { pubkey: userInputToken, isSigner: false, isWritable: true },
         { pubkey: userOutputToken, isSigner: false, isWritable: true },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: tokenProgram, isSigner: false, isWritable: false },
       ],
       programId: KRYPTOS_PROGRAM_ID,
       data: WITHDRAW_DCA_DISCRIMINATOR,
@@ -594,6 +637,10 @@ export async function closeDcaVault(
     // Build transaction
     const transaction = new Transaction();
     
+    // Detect token program for input mint
+    const inputTokenProgram = await detectTokenProgram(connection, inputMint);
+    console.log('Close DCA: Token program:', inputTokenProgram.equals(TOKEN_2022_PROGRAM_ID) ? 'Token-2022' : 'Standard');
+    
     // Add close_dca instruction
     transaction.add({
       keys: [
@@ -601,7 +648,7 @@ export async function closeDcaVault(
         { pubkey: dcaVault, isSigner: false, isWritable: true },
         { pubkey: inputVault, isSigner: false, isWritable: true },
         { pubkey: outputVault, isSigner: false, isWritable: true },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: inputTokenProgram, isSigner: false, isWritable: false },
       ],
       programId: KRYPTOS_PROGRAM_ID,
       data: CLOSE_DCA_DISCRIMINATOR,
@@ -828,12 +875,16 @@ export async function createLimitOrder(
     const [intentVault] = deriveIntentVaultPDA(authority, params.inputMint, nonce);
     const [vaultInputToken] = deriveIntentInputVaultPDA(intentVault);
     
-    // Get user's input token ATA
-    const userInputToken = await getAssociatedTokenAddress(params.inputMint, authority);
+    // Detect token program for input mint (supports Token-2022)
+    const inputTokenProgram = await detectTokenProgram(connection, params.inputMint);
+    console.log('Limit Order: Token program:', inputTokenProgram.equals(TOKEN_2022_PROGRAM_ID) ? 'Token-2022' : 'Standard');
+    
+    // Get user's input token ATA with correct program
+    const userInputToken = await getAssociatedTokenAddress(params.inputMint, authority, false, inputTokenProgram);
     
     // Check if user has the ATA
     try {
-      await getAccount(connection, userInputToken);
+      await getAccount(connection, userInputToken, undefined, inputTokenProgram);
     } catch {
       return {
         success: false,
@@ -873,7 +924,7 @@ export async function createLimitOrder(
         { pubkey: userInputToken, isSigner: false, isWritable: true },
         { pubkey: vaultInputToken, isSigner: false, isWritable: true },
         { pubkey: SystemProgram.programId, isSigner: false, isWritable: false },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: inputTokenProgram, isSigner: false, isWritable: false }, // Use detected program
         { pubkey: ASSOCIATED_TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
         { pubkey: SYSVAR_RENT_PUBKEY, isSigner: false, isWritable: false },
       ],
@@ -944,8 +995,12 @@ export async function withdrawIntent(
     console.log('Input Mint:', inputMint.toBase58());
     console.log('Vault Input Token:', vaultInputToken.toBase58());
     
-    // Get user's input token ATA
-    const userInputToken = await getAssociatedTokenAddress(inputMint, authority);
+    // Detect token program for input mint (supports Token-2022)
+    const inputTokenProgram = await detectTokenProgram(connection, inputMint);
+    console.log('Withdraw Intent: Token program:', inputTokenProgram.equals(TOKEN_2022_PROGRAM_ID) ? 'Token-2022' : 'Standard');
+    
+    // Get user's input token ATA with correct program
+    const userInputToken = await getAssociatedTokenAddress(inputMint, authority, false, inputTokenProgram);
     console.log('User Input Token:', userInputToken.toBase58());
     
     // Verify vault input token exists
@@ -960,7 +1015,7 @@ export async function withdrawIntent(
     
     // Check if user has input token ATA, if not create it
     try {
-      await getAccount(connection, userInputToken);
+      await getAccount(connection, userInputToken, undefined, inputTokenProgram);
     } catch {
       console.log('Creating user ATA...');
       transaction.add(
@@ -968,7 +1023,8 @@ export async function withdrawIntent(
           authority,
           userInputToken,
           authority,
-          inputMint
+          inputMint,
+          inputTokenProgram
         )
       );
     }
@@ -980,7 +1036,7 @@ export async function withdrawIntent(
         { pubkey: intentVaultAddress, isSigner: false, isWritable: true },
         { pubkey: vaultInputToken, isSigner: false, isWritable: true },
         { pubkey: userInputToken, isSigner: false, isWritable: true },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: inputTokenProgram, isSigner: false, isWritable: false },
       ],
       programId: KRYPTOS_PROGRAM_ID,
       data: WITHDRAW_INTENT_DISCRIMINATOR,
@@ -1020,9 +1076,14 @@ export async function closeIntent(
       return { success: false, error: 'Intent vault not found.' };
     }
     
-    // Parse input_vault from account data (offset 113-145)
+    // Parse input_vault and input_mint from account data
     const data = new Uint8Array(accountInfo.data);
+    const inputMint = new PublicKey(data.slice(49, 81));
     const vaultInputToken = new PublicKey(data.slice(113, 145));
+    
+    // Detect token program for input mint (supports Token-2022)
+    const inputTokenProgram = await detectTokenProgram(connection, inputMint);
+    console.log('Close Intent: Token program:', inputTokenProgram.equals(TOKEN_2022_PROGRAM_ID) ? 'Token-2022' : 'Standard');
     
     // Build transaction
     const transaction = new Transaction();
@@ -1033,7 +1094,7 @@ export async function closeIntent(
         { pubkey: authority, isSigner: true, isWritable: true },
         { pubkey: intentVaultAddress, isSigner: false, isWritable: true },
         { pubkey: vaultInputToken, isSigner: false, isWritable: true },
-        { pubkey: TOKEN_PROGRAM_ID, isSigner: false, isWritable: false },
+        { pubkey: inputTokenProgram, isSigner: false, isWritable: false },
       ],
       programId: KRYPTOS_PROGRAM_ID,
       data: CLOSE_INTENT_DISCRIMINATOR,

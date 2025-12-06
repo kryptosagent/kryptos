@@ -144,7 +144,7 @@ export interface JupiterHoldingsResponse {
 }
 
 // Command types
-export type CommandType = 'swap' | 'transfer' | 'dca' | 'withdraw_dca' | 'close_dca' | 'list_dca' | 'limit_order' | 'list_limit_orders' | 'cancel_limit_order' | 'balance' | 'status' | 'price' | 'token' | 'help' | 'unknown';
+export type CommandType = 'swap' | 'transfer' | 'dca' | 'withdraw_dca' | 'close_dca' | 'list_dca' | 'limit_order' | 'list_limit_orders' | 'cancel_limit_order' | 'burn' | 'balance' | 'status' | 'price' | 'token' | 'help' | 'unknown';
 
 export interface ParsedCommand {
   type: CommandType;
@@ -717,65 +717,71 @@ export async function getBalances(
     console.log('=== FETCHING BALANCES ===');
     console.log('Wallet:', publicKey.toBase58());
 
-    // Try Jupiter Holdings API first
-    const holdings = await getHoldings(publicKey.toBase58());
+    // Store Jupiter Holdings data for USD values
+    const jupiterUsdValues: Record<string, number> = {};
     
-    if (holdings && holdings.tokens && Array.isArray(holdings.tokens)) {
-      console.log('Using Jupiter Holdings API');
+    // Try Jupiter Holdings API for USD values
+    try {
+      const holdings = await getHoldings(publicKey.toBase58());
       
-      // Process tokens using index-based loop (safe)
-      const holdingsTokens = holdings.tokens;
-      for (let i = 0; i < holdingsTokens.length; i++) {
-        try {
-          const token = holdingsTokens[i];
-          if (!token || !token.mint || !token.amount) continue;
-          
-          const balance = parseInt(token.amount) / Math.pow(10, token.decimals || 0);
-          if (balance > 0) {
-            const symbol = findSymbolForMint(token.mint) || formatAddress(token.mint, 4);
-            result.tokens.push({
-              mint: token.mint,
-              symbol,
-              balance,
-              decimals: token.decimals || 0,
-              usdValue: token.usdValue,
-            });
-            console.log(`Token: ${symbol} = ${balance}`);
+      if (holdings && holdings.tokens && Array.isArray(holdings.tokens)) {
+        console.log('Jupiter Holdings API: got USD values');
+        
+        for (let i = 0; i < holdings.tokens.length; i++) {
+          const token = holdings.tokens[i];
+          if (token && token.mint && token.usdValue) {
+            jupiterUsdValues[token.mint] = token.usdValue;
           }
-        } catch (tokenErr) {
-          console.error('Error processing holdings token:', tokenErr);
+        }
+        
+        // Get SOL balance from Jupiter if available
+        if (holdings.nativeSol) {
+          result.sol = parseInt(holdings.nativeSol.amount) / LAMPORTS_PER_SOL;
         }
       }
-      
-      const solAmount = holdings.nativeSol 
-        ? parseInt(holdings.nativeSol.amount) / LAMPORTS_PER_SOL 
-        : 0;
-      
-      result.sol = solAmount;
-      console.log('SOL Balance:', solAmount);
-      console.log('=== HOLDINGS API COMPLETE ===');
-      return result;
+    } catch (jupiterErr) {
+      console.log('Jupiter Holdings API failed, continuing with on-chain only');
     }
     
-    // Fallback to on-chain data
-    console.log('Using on-chain fallback');
+    // Always fetch on-chain data (includes ALL tokens like pump.fun)
+    console.log('Fetching on-chain token accounts...');
     
-    const solBalance = await connection.getBalance(publicKey);
-    result.sol = solBalance / LAMPORTS_PER_SOL;
+    // Get SOL balance if not already set
+    if (result.sol === 0) {
+      const solBalance = await connection.getBalance(publicKey);
+      result.sol = solBalance / LAMPORTS_PER_SOL;
+    }
     console.log('SOL Balance:', result.sol);
 
-    const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
-      programId: TOKEN_PROGRAM_ID,
-    });
+    // Import Token-2022 program ID
+    const { TOKEN_2022_PROGRAM_ID } = await import('@solana/spl-token');
 
-    console.log('Token accounts found:', tokenAccounts.value?.length || 0);
+    // Fetch from BOTH Token Program and Token-2022 Program
+    const [standardAccounts, token2022Accounts] = await Promise.all([
+      connection.getParsedTokenAccountsByOwner(publicKey, {
+        programId: TOKEN_PROGRAM_ID,
+      }),
+      connection.getParsedTokenAccountsByOwner(publicKey, {
+        programId: TOKEN_2022_PROGRAM_ID,
+      }),
+    ]);
 
-    // Process token accounts using index-based loop (safe)
-    const accounts = tokenAccounts.value;
-    if (accounts && Array.isArray(accounts)) {
-      for (let i = 0; i < accounts.length; i++) {
+    console.log('Standard Token accounts found:', standardAccounts.value?.length || 0);
+    console.log('Token-2022 accounts found:', token2022Accounts.value?.length || 0);
+
+    // Combine both arrays
+    const allAccounts = [
+      ...(standardAccounts.value || []),
+      ...(token2022Accounts.value || []),
+    ];
+
+    console.log('Total token accounts:', allAccounts.length);
+
+    // Process ALL token accounts from on-chain
+    if (allAccounts.length > 0) {
+      for (let i = 0; i < allAccounts.length; i++) {
         try {
-          const accountData = accounts[i];
+          const accountData = allAccounts[i];
           if (!accountData || !accountData.account || !accountData.account.data) continue;
           
           const data = accountData.account.data;
@@ -795,14 +801,16 @@ export async function getBalances(
           const decimals = Number(tokenAmount.decimals) || 0;
 
           if (balance > 0) {
-            const symbol = findSymbolForMint(String(mint)) || formatAddress(String(mint), 4);
+            const mintStr = String(mint);
+            const knownSymbol = findSymbolForMint(mintStr);
+            
             result.tokens.push({
-              mint: String(mint),
-              symbol,
+              mint: mintStr,
+              symbol: knownSymbol || mintStr, // Temporarily use mint, will resolve below
               balance,
               decimals,
+              usdValue: jupiterUsdValues[mintStr],
             });
-            console.log(`Token: ${symbol} = ${balance}`);
           }
         } catch (tokenErr) {
           console.error('Error processing token account:', tokenErr);
@@ -810,7 +818,51 @@ export async function getBalances(
       }
     }
 
-    console.log('=== ON-CHAIN COMPLETE ===');
+    // Resolve symbols for unknown tokens via Jupiter API
+    const unknownMints = result.tokens
+      .filter(t => !findSymbolForMint(t.mint))
+      .map(t => t.mint);
+    
+    if (unknownMints.length > 0) {
+      console.log('Resolving symbols for', unknownMints.length, 'unknown tokens...');
+      
+      // Fetch token info for unknown mints (batch via Promise.all, limit to 10)
+      const mintsToFetch = unknownMints.slice(0, 10);
+      const tokenInfoPromises = mintsToFetch.map(mint => getTokenInfo(mint));
+      const tokenInfoResults = await Promise.all(tokenInfoPromises);
+      
+      // Create a map of mint -> symbol
+      const symbolMap: Record<string, string> = {};
+      for (let i = 0; i < mintsToFetch.length; i++) {
+        const info = tokenInfoResults[i];
+        if (info && info.symbol) {
+          symbolMap[mintsToFetch[i]] = info.symbol;
+        }
+      }
+      
+      // Update token symbols in result
+      for (let i = 0; i < result.tokens.length; i++) {
+        const token = result.tokens[i];
+        if (symbolMap[token.mint]) {
+          token.symbol = symbolMap[token.mint];
+          console.log(`Resolved: ${token.mint} -> ${token.symbol}`);
+        } else if (!findSymbolForMint(token.mint)) {
+          // Still unknown, use shortened address
+          token.symbol = formatAddress(token.mint, 4);
+        }
+      }
+    }
+
+    // Sort tokens by USD value (highest first), then by balance
+    result.tokens.sort((a, b) => {
+      if (a.usdValue && b.usdValue) return b.usdValue - a.usdValue;
+      if (a.usdValue) return -1;
+      if (b.usdValue) return 1;
+      return b.balance - a.balance;
+    });
+
+    console.log('=== BALANCES COMPLETE ===');
+    console.log('Total tokens found:', result.tokens.length);
     return result;
   } catch (error) {
     console.error('getBalances error:', error);
@@ -845,20 +897,56 @@ export async function executeTransfer(
         })
       );
     } else {
-      const { createTransferInstruction } = await import('@solana/spl-token');
+      const { 
+        createTransferInstruction, 
+        getAccount,
+        TOKEN_PROGRAM_ID,
+        TOKEN_2022_PROGRAM_ID,
+        getAssociatedTokenAddress: getAta,
+        createAssociatedTokenAccountInstruction: createAtaIx,
+        ASSOCIATED_TOKEN_PROGRAM_ID,
+      } = await import('@solana/spl-token');
+      
       const mintPubkey = new PublicKey(tokenMint);
       
-      const fromAta = await getAssociatedTokenAddress(mintPubkey, wallet.publicKey);
-      const toAta = await getAssociatedTokenAddress(mintPubkey, destPubkey);
-
+      // Detect which token program this mint uses
+      let tokenProgramId = TOKEN_PROGRAM_ID;
+      let fromAta: PublicKey | null = null;
+      
+      // Try standard Token Program first
+      try {
+        const ata = await getAta(mintPubkey, wallet.publicKey, false, TOKEN_PROGRAM_ID);
+        await getAccount(connection, ata, undefined, TOKEN_PROGRAM_ID);
+        fromAta = ata;
+        tokenProgramId = TOKEN_PROGRAM_ID;
+        console.log('Transfer: Using Standard Token Program');
+      } catch (e) {
+        // Try Token-2022 Program
+        try {
+          const ata2022 = await getAta(mintPubkey, wallet.publicKey, false, TOKEN_2022_PROGRAM_ID);
+          await getAccount(connection, ata2022, undefined, TOKEN_2022_PROGRAM_ID);
+          fromAta = ata2022;
+          tokenProgramId = TOKEN_2022_PROGRAM_ID;
+          console.log('Transfer: Using Token-2022 Program');
+        } catch (e2) {
+          return { success: false, error: 'Token account not found in your wallet.' };
+        }
+      }
+      
+      // Get destination ATA with correct program
+      const toAta = await getAta(mintPubkey, destPubkey, false, tokenProgramId);
+      
+      // Check if destination ATA exists
       const toAtaInfo = await connection.getAccountInfo(toAta);
       if (!toAtaInfo) {
         tx.add(
-          createAssociatedTokenAccountInstruction(
-            wallet.publicKey,
-            toAta,
-            destPubkey,
-            mintPubkey
+          createAtaIx(
+            wallet.publicKey,    // payer
+            toAta,               // ata
+            destPubkey,          // owner
+            mintPubkey,          // mint
+            tokenProgramId,      // token program
+            ASSOCIATED_TOKEN_PROGRAM_ID
           )
         );
       }
@@ -868,22 +956,174 @@ export async function executeTransfer(
           fromAta,
           toAta,
           wallet.publicKey,
-          Math.floor(amount * Math.pow(10, decimals))
+          BigInt(Math.floor(amount * Math.pow(10, decimals))),
+          [],
+          tokenProgramId  // Pass correct program
         )
       );
     }
 
-    const { blockhash } = await connection.getLatestBlockhash();
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
     tx.recentBlockhash = blockhash;
     tx.feePayer = wallet.publicKey;
 
     const signedTx = await wallet.signTransaction(tx);
     const signature = await connection.sendRawTransaction(signedTx.serialize());
-    await connection.confirmTransaction(signature);
+    await connection.confirmTransaction({
+      signature,
+      blockhash,
+      lastValidBlockHeight,
+    }, 'confirmed');
 
     return { success: true, signature };
   } catch (error: any) {
+    console.error('Transfer error:', error);
     return { success: false, error: error.message };
+  }
+}
+
+// ============================================================================
+// BURN TOKEN EXECUTION
+// ============================================================================
+
+export async function executeBurn(
+  connection: Connection,
+  wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction> },
+  tokenMint: string,
+  amount: number,
+  decimals: number
+): Promise<{ success: boolean; signature?: string; error?: string }> {
+  try {
+    const { 
+      getAccount, 
+      createBurnInstruction, 
+      TOKEN_PROGRAM_ID, 
+      TOKEN_2022_PROGRAM_ID,
+      getAssociatedTokenAddress 
+    } = await import('@solana/spl-token');
+    
+    const mintPubkey = new PublicKey(tokenMint);
+    
+    // Detect which token program this mint uses
+    let tokenProgramId = TOKEN_PROGRAM_ID;
+    let userAta: PublicKey | null = null;
+    
+    // Try standard Token Program first
+    try {
+      const ata = await getAssociatedTokenAddress(mintPubkey, wallet.publicKey, false, TOKEN_PROGRAM_ID);
+      await getAccount(connection, ata, undefined, TOKEN_PROGRAM_ID);
+      userAta = ata;
+      tokenProgramId = TOKEN_PROGRAM_ID;
+      console.log('Using Standard Token Program');
+    } catch (e) {
+      // Try Token-2022 Program
+      try {
+        const ata2022 = await getAssociatedTokenAddress(mintPubkey, wallet.publicKey, false, TOKEN_2022_PROGRAM_ID);
+        await getAccount(connection, ata2022, undefined, TOKEN_2022_PROGRAM_ID);
+        userAta = ata2022;
+        tokenProgramId = TOKEN_2022_PROGRAM_ID;
+        console.log('Using Token-2022 Program');
+      } catch (e2) {
+        // Last resort: scan for the token account
+        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(wallet.publicKey, {
+          mint: mintPubkey,
+        });
+        
+        if (tokenAccounts.value.length === 0) {
+          return { success: false, error: 'You don\'t have this token in your wallet.' };
+        }
+        
+        userAta = tokenAccounts.value[0].pubkey;
+        // Determine program from account owner
+        const accountInfo = await connection.getAccountInfo(userAta);
+        if (accountInfo?.owner.equals(TOKEN_2022_PROGRAM_ID)) {
+          tokenProgramId = TOKEN_2022_PROGRAM_ID;
+          console.log('Using Token-2022 Program (from scan)');
+        } else {
+          tokenProgramId = TOKEN_PROGRAM_ID;
+          console.log('Using Standard Token Program (from scan)');
+        }
+      }
+    }
+    
+    if (!userAta) {
+      return { success: false, error: 'Could not find token account.' };
+    }
+    
+    console.log('Token Account:', userAta.toBase58());
+    console.log('Token Program:', tokenProgramId.toBase58());
+    
+    // Calculate amount in smallest units
+    const burnAmountRaw = BigInt(Math.floor(amount * Math.pow(10, decimals)));
+    
+    // Create burn instruction with correct program
+    const burnIx = createBurnInstruction(
+      userAta,           // token account
+      mintPubkey,        // mint
+      wallet.publicKey,  // owner
+      burnAmountRaw,     // amount
+      [],                // multiSigners
+      tokenProgramId     // programId - THIS IS THE KEY!
+    );
+    
+    // Build transaction
+    const transaction = new Transaction().add(burnIx);
+    transaction.feePayer = wallet.publicKey;
+    
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    transaction.recentBlockhash = blockhash;
+    
+    // Simulate first (Phantom-friendly)
+    try {
+      const { VersionedTransaction, TransactionMessage } = await import('@solana/web3.js');
+      
+      const messageV0 = new TransactionMessage({
+        payerKey: wallet.publicKey,
+        recentBlockhash: blockhash,
+        instructions: transaction.instructions,
+      }).compileToV0Message();
+      
+      const versionedTx = new VersionedTransaction(messageV0);
+      
+      const simulation = await connection.simulateTransaction(versionedTx, {
+        sigVerify: false,
+        replaceRecentBlockhash: true,
+      });
+      
+      if (simulation.value.err) {
+        console.error('Simulation error:', simulation.value.err);
+        return { 
+          success: false, 
+          error: `Simulation failed: ${JSON.stringify(simulation.value.err)}` 
+        };
+      }
+      
+      console.log('Simulation passed!');
+    } catch (simError: any) {
+      console.error('Simulation error:', simError);
+      return { success: false, error: `Simulation failed: ${simError.message}` };
+    }
+    
+    // Sign and send
+    const signedTx = await wallet.signTransaction(transaction);
+    const signature = await connection.sendRawTransaction(signedTx.serialize(), {
+      skipPreflight: false,
+      preflightCommitment: 'confirmed',
+    });
+    
+    // Confirm
+    await connection.confirmTransaction({
+      signature,
+      blockhash,
+      lastValidBlockHeight,
+    }, 'confirmed');
+    
+    console.log('Burn successful:', signature);
+    return { success: true, signature };
+    
+  } catch (error: any) {
+    console.error('Burn error:', error);
+    return { success: false, error: error.message || 'Unknown error during burn' };
   }
 }
 
@@ -1006,6 +1246,25 @@ export function parseCommand(input: string): ParsedCommand {
     };
   }
 
+  // BURN - Support: "burn 100 KRYPTOS", "burn 50% USDC", "burn all KRYPTOS"
+  const burnMatch = input.match(/burn\s+([\d.]+%?|all)\s+([a-zA-Z0-9]+)/i);
+  if (burnMatch) {
+    const [, amountStr, tokenRaw] = burnMatch;
+    const tokenMint = resolveToken(tokenRaw);
+    
+    return {
+      type: 'burn',
+      params: {
+        amountStr,  // "100", "50%", or "all"
+        tokenRaw,
+        tokenMint,
+        isPercentage: amountStr.includes('%'),
+        isAll: amountStr.toLowerCase() === 'all',
+      },
+      raw: input,
+    };
+  }
+
   // TOKEN INFO
   const tokenMatch = input.match(/(?:token|info|what is|lookup)\s+([a-zA-Z0-9]{32,44})/i);
   if (tokenMatch) {
@@ -1070,6 +1329,11 @@ Example: \`Swap 1 SOL to EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\``;
 
 export function getHelpMessage(): string {
   return `🔒 **KRYPTOS Commands**
+
+**Burn Tokens:** 🔥
+\`Burn 100 BONK\` - Burn specific amount
+\`Burn 50% USDC\` - Burn percentage of balance
+\`Burn all WIF\` - Burn entire balance
 
 **Swap Tokens:**
 \`Swap 1 SOL to USDC\`

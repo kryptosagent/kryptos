@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
+import { getAssociatedTokenAddress } from '@solana/spl-token';
 import { 
   createDcaVault, 
   withdrawDcaVault,
@@ -35,7 +36,8 @@ import TransactionHistory, { SessionTransaction } from '@/components/Transaction
 import { 
   parseCommand, 
   executeSwap, 
-  executeTransfer, 
+  executeTransfer,
+  executeBurn,
   getBalances, 
   getTokenPrice, 
   getSwapOrder,
@@ -1066,6 +1068,203 @@ Connect your wallet to start!`,
         break;
       }
       
+      case 'burn': {
+        if (!connected || !publicKey) {
+          updateMessage(messageId, {
+            content: '❌ Please connect your wallet first.',
+            status: 'error',
+          });
+          return;
+        }
+
+        const { amountStr, tokenRaw, tokenMint, isPercentage, isAll } = command.params;
+
+        // Validate token
+        if (!tokenMint) {
+          updateMessage(messageId, {
+            content: `❌ Unknown token: \`${tokenRaw}\`\n\n${getSupportedTokensHelp()}`,
+            status: 'error',
+          });
+          return;
+        }
+
+        // Prevent burning SOL
+        if (tokenMint === 'So11111111111111111111111111111111111111112') {
+          updateMessage(messageId, {
+            content: `❌ **Cannot burn SOL**\n\nSOL is the native token and cannot be burned.\nYou can only burn SPL tokens.`,
+            status: 'error',
+          });
+          return;
+        }
+
+        updateMessage(messageId, { content: 'Looking up token info...', status: 'thinking' });
+
+        // Import SPL token functions
+        const { getAccount, getMint } = await import('@solana/spl-token');
+        const mintPubkey = new PublicKey(tokenMint);
+
+        // Try Jupiter API first, fallback to on-chain for pump.fun tokens
+        let tokenInfo = await getTokenInfo(tokenMint);
+        let decimals: number;
+
+        if (!tokenInfo) {
+          // Fallback: get decimals directly from on-chain mint account
+          try {
+            const mintAccount = await getMint(connection, mintPubkey);
+            decimals = mintAccount.decimals;
+            // Create minimal token info for pump.fun tokens
+            tokenInfo = {
+              mint: tokenMint,
+              symbol: tokenRaw.toUpperCase(),
+              name: tokenRaw.toUpperCase(),
+              decimals: decimals,
+            };
+          } catch (e) {
+            updateMessage(messageId, {
+              content: `❌ Could not find token: \`${formatAddress(tokenMint)}\`\n\nMake sure the contract address is correct.`,
+              status: 'error',
+            });
+            return;
+          }
+        } else {
+          decimals = tokenInfo.decimals;
+        }
+
+        // Get user balance - try both Token Program and Token-2022
+        const { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID } = await import('@solana/spl-token');
+        
+        console.log('=== BURN DEBUG ===');
+        console.log('Wallet:', publicKey.toBase58());
+        console.log('Token Mint:', mintPubkey.toBase58());
+        
+        let tokenBalance: { balance: number; decimals: number } | null = null;
+        let foundAta: PublicKey | null = null;
+        
+        // Try standard Token Program first
+        try {
+          const ata = await getAssociatedTokenAddress(mintPubkey, publicKey, false, TOKEN_PROGRAM_ID);
+          console.log('Trying Standard ATA:', ata.toBase58());
+          const tokenAccount = await getAccount(connection, ata, undefined, TOKEN_PROGRAM_ID);
+          console.log('Found with Standard Token Program!');
+          console.log('Raw Amount:', tokenAccount.amount.toString());
+          const balance = Number(tokenAccount.amount) / Math.pow(10, decimals);
+          tokenBalance = { balance, decimals };
+          foundAta = ata;
+        } catch (e1: any) {
+          console.log('Standard Token Program failed:', e1.message);
+          
+          // Try Token-2022 Program
+          try {
+            const ata2022 = await getAssociatedTokenAddress(mintPubkey, publicKey, false, TOKEN_2022_PROGRAM_ID);
+            console.log('Trying Token-2022 ATA:', ata2022.toBase58());
+            const tokenAccount = await getAccount(connection, ata2022, undefined, TOKEN_2022_PROGRAM_ID);
+            console.log('Found with Token-2022 Program!');
+            console.log('Raw Amount:', tokenAccount.amount.toString());
+            const balance = Number(tokenAccount.amount) / Math.pow(10, decimals);
+            tokenBalance = { balance, decimals };
+            foundAta = ata2022;
+          } catch (e2: any) {
+            console.log('Token-2022 Program also failed:', e2.message);
+            
+            // Last resort: scan all token accounts
+            console.log('Scanning all token accounts...');
+            try {
+              const tokenAccounts = await connection.getParsedTokenAccountsByOwner(publicKey, {
+                mint: mintPubkey,
+              });
+              console.log('Found accounts:', tokenAccounts.value.length);
+              
+              if (tokenAccounts.value.length > 0) {
+                const acc = tokenAccounts.value[0];
+                const parsed = acc.account.data.parsed.info;
+                const balance = parsed.tokenAmount.uiAmount;
+                const dec = parsed.tokenAmount.decimals;
+                console.log('Found via scan! Balance:', balance, 'Decimals:', dec);
+                tokenBalance = { balance, decimals: dec };
+                foundAta = acc.pubkey;
+              }
+            } catch (e3: any) {
+              console.error('Scan also failed:', e3.message);
+            }
+          }
+        }
+        
+        console.log('Final tokenBalance:', tokenBalance);
+        console.log('Found ATA:', foundAta?.toBase58() || 'none');
+
+        if (!tokenBalance || tokenBalance.balance <= 0) {
+          updateMessage(messageId, {
+            content: `❌ **No Balance Found**\n\nYou don't have any ${tokenInfo.symbol} in your wallet.`,
+            status: 'error',
+          });
+          return;
+        }
+
+        // Calculate burn amount
+        let burnAmount: number;
+
+        if (isAll) {
+          burnAmount = tokenBalance.balance;
+        } else if (isPercentage) {
+          const percentage = parseFloat(amountStr.replace('%', ''));
+          burnAmount = (percentage / 100) * tokenBalance.balance;
+        } else {
+          burnAmount = parseFloat(amountStr);
+        }
+
+        // Validate amount
+        if (isNaN(burnAmount) || burnAmount <= 0) {
+          updateMessage(messageId, {
+            content: `❌ Invalid burn amount: \`${amountStr}\``,
+            status: 'error',
+          });
+          return;
+        }
+
+        if (burnAmount > tokenBalance.balance) {
+          updateMessage(messageId, {
+            content: `❌ **Insufficient Balance**\n\nYou want to burn: ${burnAmount.toLocaleString()} ${tokenInfo.symbol}\nYou have: ${tokenBalance.balance.toLocaleString()} ${tokenInfo.symbol}`,
+            status: 'error',
+          });
+          return;
+        }
+
+        // Get USD value if available
+        const tokenPrice = await getTokenPrice(tokenMint);
+        const usdValue = tokenPrice ? burnAmount * tokenPrice : null;
+
+        // Build confirmation message with extra safety warnings
+        let confirmMsg = `🔥 **Burn Preview**\n\n`;
+        confirmMsg += `**Token:** ${tokenInfo.symbol}\n`;
+        confirmMsg += `**Name:** ${tokenInfo.name}\n`;
+        confirmMsg += `**Contract:** \`${tokenMint}\`\n\n`;
+        confirmMsg += `**Your Balance:** ${tokenBalance.balance.toLocaleString()} ${tokenInfo.symbol}\n`;
+        confirmMsg += `**Amount to Burn:** ${burnAmount.toLocaleString()} ${tokenInfo.symbol}`;
+        if (usdValue) {
+          confirmMsg += ` (~$${usdValue.toFixed(2)})`;
+        }
+        confirmMsg += `\n\n`;
+        confirmMsg += `⚠️ **WARNING: THIS ACTION IS IRREVERSIBLE**\n`;
+        confirmMsg += `Burned tokens are permanently destroyed and cannot be recovered.\n\n`;
+        confirmMsg += `Type **confirm** to burn or **cancel** to abort.`;
+
+        updateMessage(messageId, {
+          content: confirmMsg,
+          status: 'confirming',
+          pendingAction: {
+            command: {
+              ...command,
+              params: {
+                ...command.params,
+                burnAmount, // Store calculated amount
+              },
+            },
+            fromToken: tokenInfo,
+          },
+        });
+        break;
+      }
+      
       default: {
         updateMessage(messageId, {
           content: `I didn't understand that command.\n\n${getHelpMessage()}`,
@@ -1447,6 +1646,57 @@ Connect your wallet to start!`,
         // Auto refresh after 2 seconds
         setTimeout(() => window.location.reload(), 2000);
       }
+    } else if (command.type === 'burn' && fromToken) {
+      // Burn tokens
+      const { burnAmount, tokenMint } = command.params;
+      
+      try {
+        const result = await executeBurn(
+          connection,
+          { publicKey, signTransaction },
+          tokenMint,
+          burnAmount,
+          fromToken.decimals
+        );
+        
+        if (result.success) {
+          updateMessage(messageId, {
+            content: `🔥 **Burn Successful!**\n\n**Burned:** ${burnAmount.toLocaleString()} ${fromToken.symbol}\n**Token:** \`${formatAddress(tokenMint)}\`\n\nTokens have been permanently destroyed.\n\n🔄 Refreshing in 2s...`,
+            status: 'done',
+            txSignature: result.signature,
+          });
+          
+          // Record to session history
+          addSessionTransaction({
+            type: 'burn' as any,
+            status: 'success',
+            signature: result.signature!,
+            details: {
+              fromToken: fromToken.symbol,
+              fromAmount: burnAmount,
+            },
+          });
+          
+          // Auto refresh after 2 seconds
+          setTimeout(() => window.location.reload(), 2000);
+        } else {
+          updateMessage(messageId, {
+            content: `❌ **Burn Failed**\n\n${result.error || 'Unknown error'}\n\n🔄 Refreshing in 2s...`,
+            status: 'error',
+          });
+          
+          // Auto refresh after 2 seconds
+          setTimeout(() => window.location.reload(), 2000);
+        }
+      } catch (error: any) {
+        updateMessage(messageId, {
+          content: `❌ **Burn Failed**\n\n${error.message}\n\n🔄 Refreshing in 2s...`,
+          status: 'error',
+        });
+        
+        // Auto refresh after 2 seconds
+        setTimeout(() => window.location.reload(), 2000);
+      }
     }
   };
 
@@ -1673,6 +1923,30 @@ Connect your wallet to start!`,
             params: {
               vaultAddress: vaultAddress || null,
               orderIndex: orderIndex || null,
+            },
+            raw: userInput,
+          };
+          await processCommand(command, messageId);
+          break;
+        }
+
+        case 'burn': {
+          const { amount, token } = llmResult.params;
+          const tokenMint = resolveToken(token) || token;
+          
+          // Determine if it's percentage or all
+          const amountStr = String(amount);
+          const isPercentage = amountStr.includes('%');
+          const isAll = amountStr.toLowerCase() === 'all';
+          
+          const command: ParsedCommand = {
+            type: 'burn',
+            params: {
+              amountStr,
+              tokenRaw: token,
+              tokenMint,
+              isPercentage,
+              isAll,
             },
             raw: userInput,
           };
