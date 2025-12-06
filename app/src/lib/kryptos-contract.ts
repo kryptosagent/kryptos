@@ -82,13 +82,28 @@ async function sendTransaction(
   transaction: Transaction,
   options?: { skipPreflight?: boolean }
 ): Promise<string> {
+  // Import VersionedTransaction and TransactionMessage for simulation
+  const { VersionedTransaction, TransactionMessage } = await import('@solana/web3.js');
+  
   // Get latest blockhash
   const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = wallet.publicKey;
 
-  // Simulate transaction first to catch errors early
-  const simulation = await connection.simulateTransaction(transaction);
+  // Convert to VersionedTransaction for simulation with sigVerify: false (Phantom recommended)
+  // This prevents wallet warnings from failed simulations
+  const messageV0 = new TransactionMessage({
+    payerKey: wallet.publicKey,
+    recentBlockhash: blockhash,
+    instructions: transaction.instructions,
+  }).compileToV0Message();
+  
+  const versionedTx = new VersionedTransaction(messageV0);
+  
+  const simulation = await connection.simulateTransaction(versionedTx, {
+    sigVerify: false,  // Don't verify signatures during simulation
+  });
+  
   if (simulation.value.err) {
     console.error('Transaction simulation failed:', simulation.value.err);
     throw new Error(`Simulation failed: ${JSON.stringify(simulation.value.err)}`);

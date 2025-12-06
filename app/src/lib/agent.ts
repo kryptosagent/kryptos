@@ -485,15 +485,48 @@ export async function executeSwap(
       };
     }
     
-    // Step 2: Deserialize and sign transaction
+    // Step 2: Deserialize transaction
     const { VersionedTransaction } = await import('@solana/web3.js');
     const txBuffer = Buffer.from(order.transaction, 'base64');
     const transaction = VersionedTransaction.deserialize(txBuffer);
     
+    // Step 2.5: Simulate transaction BEFORE signing (Phantom recommended)
+    // This prevents wallet warnings from failed simulations
+    const simulation = await connection.simulateTransaction(transaction, {
+      sigVerify: false, // Don't verify signatures during simulation
+      replaceRecentBlockhash: true, // Use fresh blockhash
+    });
+    
+    if (simulation.value.err) {
+      console.error('Simulation failed:', simulation.value.err);
+      const errStr = JSON.stringify(simulation.value.err);
+      
+      // User-friendly error messages
+      if (errStr.includes('6001') || errStr.toLowerCase().includes('slippage')) {
+        return {
+          success: false,
+          error: 'Price moved too fast. Please try again.',
+        };
+      }
+      if (errStr.includes('InsufficientFunds') || errStr.includes('0x1')) {
+        return {
+          success: false,
+          error: 'Insufficient balance for this swap.',
+        };
+      }
+      return {
+        success: false,
+        error: `Transaction would fail: ${errStr}`,
+      };
+    }
+    
+    console.log('Simulation passed, requesting signature...');
+    
+    // Step 3: Sign transaction (only if simulation passed)
     const signedTx = await wallet.signTransaction(transaction);
     const signedTxBase64 = Buffer.from(signedTx.serialize()).toString('base64');
     
-    // Step 3: Execute via Jupiter
+    // Step 4: Execute via Jupiter
     const executeResult = await executeSwapTransaction(signedTxBase64, order.requestId);
     
     if (executeResult.status === 'Success') {
