@@ -49,6 +49,7 @@ import {
   getHelpMessage,
   TOKEN_SHORTCUTS,
   resolveToken,
+  isValidAddress,  // ADD THIS
   ParsedCommand,
   TokenInfo
 } from '@/lib/agent';
@@ -1755,8 +1756,26 @@ Connect your wallet to start!`,
       switch (llmResult.intent) {
         case 'swap': {
           const { amount, fromToken, toToken } = llmResult.params;
-          const fromMint = resolveToken(fromToken) || fromToken;
-          const toMint = resolveToken(toToken) || toToken;
+          let fromMint = resolveToken(fromToken) || fromToken;
+          let toMint = resolveToken(toToken) || toToken;
+          
+          // If toMint is not a valid Solana address, search for the token
+          if (!isValidAddress(toMint)) {
+            const searchResults = await searchToken(toToken);
+            if (searchResults.length > 0) {
+              toMint = searchResults[0].mint;
+              console.log(`Resolved "${toToken}" to mint: ${toMint}`);
+            }
+          }
+          
+          // Same for fromMint
+          if (!isValidAddress(fromMint)) {
+            const searchResults = await searchToken(fromToken);
+            if (searchResults.length > 0) {
+              fromMint = searchResults[0].mint;
+              console.log(`Resolved "${fromToken}" to mint: ${fromMint}`);
+            }
+          }
           
           const command: ParsedCommand = {
             type: 'swap',
