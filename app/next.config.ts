@@ -1,6 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  turbopack: {},
   transpilePackages: ['@privy-io/react-auth'],
   webpack: (config, { isServer }) => {
     if (!isServer) {
