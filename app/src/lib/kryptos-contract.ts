@@ -113,8 +113,8 @@ async function sendTransaction(
   // Import VersionedTransaction and TransactionMessage for simulation
   const { VersionedTransaction, TransactionMessage } = await import('@solana/web3.js');
   
-  // Get latest blockhash
-  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('confirmed');
+  // Get latest blockhash - use 'finalized' for guaranteed finality (Phantom recommended)
+  const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
   transaction.recentBlockhash = blockhash;
   transaction.feePayer = wallet.publicKey;
 

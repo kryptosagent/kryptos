@@ -876,7 +876,11 @@ export async function getBalances(
 
 export async function executeTransfer(
   connection: Connection,
-  wallet: any,
+  wallet: {
+    publicKey: PublicKey;
+    signTransaction: (tx: Transaction) => Promise<Transaction>;
+    signAndSendTransaction?: (tx: Transaction) => Promise<{ signature: string }>;
+  },
   tokenMint: string | null,
   amount: number,
   destination: string,
@@ -963,12 +967,23 @@ export async function executeTransfer(
       );
     }
 
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
     tx.recentBlockhash = blockhash;
     tx.feePayer = wallet.publicKey;
 
-    const signedTx = await wallet.signTransaction(tx);
-    const signature = await connection.sendRawTransaction(signedTx.serialize());
+    // Phantom recommended: support both signAndSendTransaction and signTransaction
+    let signature: string;
+
+    if (wallet.signAndSendTransaction) {
+      // Preferred method for Phantom
+      const result = await wallet.signAndSendTransaction(tx);
+      signature = result.signature;
+    } else {
+      // Fallback for other wallets
+      const signedTx = await wallet.signTransaction(tx);
+      signature = await connection.sendRawTransaction(signedTx.serialize());
+    }
+
     await connection.confirmTransaction({
       signature,
       blockhash,
@@ -988,7 +1003,11 @@ export async function executeTransfer(
 
 export async function executeBurn(
   connection: Connection,
-  wallet: { publicKey: PublicKey; signTransaction: (tx: Transaction) => Promise<Transaction> },
+  wallet: { 
+    publicKey: PublicKey; 
+    signTransaction: (tx: Transaction) => Promise<Transaction>;
+    signAndSendTransaction?: (tx: Transaction) => Promise<{ signature: string }>;
+  },
   tokenMint: string,
   amount: number,
   decimals: number
@@ -1069,10 +1088,10 @@ export async function executeBurn(
     // Build transaction
     const transaction = new Transaction().add(burnIx);
     transaction.feePayer = wallet.publicKey;
-    
-    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+
+    const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash('finalized');
     transaction.recentBlockhash = blockhash;
-    
+
     // Simulate first (Phantom-friendly)
     try {
       const { VersionedTransaction, TransactionMessage } = await import('@solana/web3.js');
@@ -1103,21 +1122,30 @@ export async function executeBurn(
       console.error('Simulation error:', simError);
       return { success: false, error: `Simulation failed: ${simError.message}` };
     }
-    
-    // Sign and send
-    const signedTx = await wallet.signTransaction(transaction);
-    const signature = await connection.sendRawTransaction(signedTx.serialize(), {
-      skipPreflight: false,
-      preflightCommitment: 'confirmed',
-    });
-    
-    // Confirm
+
+    // Sign and send - Phantom recommended pattern
+    let signature: string;
+
+    if (wallet.signAndSendTransaction) {
+      // Preferred method for Phantom
+      const result = await wallet.signAndSendTransaction(transaction);
+      signature = result.signature;
+    } else {
+      // Fallback for other wallets
+      const signedTx = await wallet.signTransaction(transaction);
+      signature = await connection.sendRawTransaction(signedTx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
+    }
+
+    // Confirm with lastValidBlockHeight for guaranteed finality
     await connection.confirmTransaction({
       signature,
       blockhash,
       lastValidBlockHeight,
     }, 'confirmed');
-    
+
     console.log('Burn successful:', signature);
     return { success: true, signature };
     

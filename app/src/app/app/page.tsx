@@ -199,7 +199,10 @@ function ChatMessage({ message }: { message: Message }) {
 // Main page component
 export default function Home() {
   const { connection } = useConnection();
-  const { publicKey, signTransaction, connected } = useWallet();
+  const { publicKey, signTransaction, wallet, connected } = useWallet();
+  
+  // Get signAndSendTransaction from wallet adapter (Phantom supported)
+  const signAndSendTransaction = (wallet?.adapter as any)?.signAndSendTransaction?.bind(wallet?.adapter);
   
   const [messages, setMessages] = useState<Message[]>([
     {
@@ -1293,7 +1296,7 @@ Connect your wallet to start!`,
       
       const result = await executeSwap(
         connection,
-        { publicKey, signTransaction },
+        { publicKey, signTransaction, signAndSendTransaction },
         fromMint,
         toMint,
         amount,
@@ -1338,7 +1341,7 @@ Connect your wallet to start!`,
       
       const result = await executeTransfer(
         connection,
-        { publicKey, signTransaction },
+        { publicKey, signTransaction, signAndSendTransaction },
         tokenMint,
         amount,
         destination,
@@ -1382,7 +1385,7 @@ Connect your wallet to start!`,
       try {
         const result = await createDcaVault(
           connection,
-          { publicKey, signTransaction },
+          { publicKey, signTransaction, signAndSendTransaction },
           new PublicKey(fromMint),
           new PublicKey(toMint),
           {
@@ -1439,7 +1442,7 @@ Connect your wallet to start!`,
       try {
         const result = await withdrawDcaVault(
           connection,
-          { publicKey, signTransaction },
+          { publicKey, signTransaction, signAndSendTransaction },
           new PublicKey(fromMint),
           new PublicKey(toMint)
         );
@@ -1490,7 +1493,7 @@ Connect your wallet to start!`,
       try {
         const result = await closeDcaVault(
           connection,
-          { publicKey, signTransaction },
+          { publicKey, signTransaction, signAndSendTransaction },
           new PublicKey(fromMint),
           new PublicKey(toMint)
         );
@@ -1541,7 +1544,7 @@ Connect your wallet to start!`,
       try {
         const result = await createLimitOrder(
           connection,
-          { publicKey, signTransaction },
+          { publicKey, signTransaction, signAndSendTransaction },
           {
             inputMint: new PublicKey(fromMint),
             outputMint: new PublicKey(toMint),
@@ -1608,7 +1611,7 @@ Connect your wallet to start!`,
         // First withdraw funds
         const withdrawResult = await withdrawIntent(
           connection,
-          { publicKey, signTransaction },
+          { publicKey, signTransaction, signAndSendTransaction },
           new PublicKey(vaultAddress)
         );
         
@@ -1616,7 +1619,7 @@ Connect your wallet to start!`,
           // Then close the vault
           const closeResult = await closeIntent(
             connection,
-            { publicKey, signTransaction },
+            { publicKey, signTransaction, signAndSendTransaction },
             new PublicKey(vaultAddress)
           );
           
@@ -1653,7 +1656,7 @@ Connect your wallet to start!`,
       try {
         const result = await executeBurn(
           connection,
-          { publicKey, signTransaction },
+          { publicKey, signTransaction, signAndSendTransaction },
           tokenMint,
           burnAmount,
           fromToken.decimals
