@@ -1,0 +1,50 @@
+{
+  "address": "CrvSTnNtciVF2q2rRui19WwAdvxpWjK6faRub9xRcesK",
+  "version": "0.1.0",
+  "name": "kryptos_drop",
+  "metadata": {
+    "address": "CrvSTnNtciVF2q2rRui19WwAdvxpWjK6faRub9xRcesK"
+  },
+  "instructions": [
+    {
+      "name": "createSolDrop",
+      "accounts": [
+        { "name": "drop", "isMut": true, "isSigner": false },
+        { "name": "creator", "isMut": true, "isSigner": true },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": [
+        { "name": "dropId", "type": "string" },
+        { "name": "amount", "type": "u64" }
+      ]
+    },
+    {
+      "name": "claimSolDrop",
+      "accounts": [
+        { "name": "drop", "isMut": true, "isSigner": false },
+        { "name": "claimer", "isMut": true, "isSigner": true },
+        { "name": "systemProgram", "isMut": false, "isSigner": false }
+      ],
+      "args": []
+    }
+  ],
+  "accounts": [
+    {
+      "name": "Drop",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          { "name": "creator", "type": "publicKey" },
+          { "name": "dropId", "type": "string" },
+          { "name": "amount", "type": "u64" },
+          { "name": "tokenMint", "type": { "option": "publicKey" } },
+          { "name": "claimed", "type": "bool" },
+          { "name": "claimer", "type": { "option": "publicKey" } },
+          { "name": "createdAt", "type": "i64" },
+          { "name": "claimedAt", "type": { "option": "i64" } },
+          { "name": "bump", "type": "u8" }
+        ]
+      }
+    }
+  ]
+}
