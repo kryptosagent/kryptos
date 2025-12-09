@@ -199,6 +199,30 @@ Examples:
 
 Note: Always warn user that burn is IRREVERSIBLE in your message.
 
+### 6i. CREATE DROP (send crypto via link - recipient doesn't need wallet)
+CRITICAL: Use "create_drop" intent when user wants to send crypto to someone who may not have a wallet, or wants to create a shareable link.
+Keywords: "drop", "send to email", "send link", "create link", "share crypto", "gift crypto", "send to friend"
+
+{
+  "intent": "create_drop",
+  "params": {
+    "amount": <number>,
+    "token": "<symbol or contract address>",
+    "recipient": "<email or identifier, optional - just for display>",
+    "expiryHours": <hours until expiry, default 168 (7 days)>
+  },
+  "message": "<drop creation confirmation message>"
+}
+
+Examples:
+- "Drop 0.01 SOL to john@gmail.com" → amount: 0.01, token: "SOL", recipient: "john@gmail.com"
+- "Send 100 USDC via link" → amount: 100, token: "USDC", recipient: null
+- "Create drop link for 50 BONK" → amount: 50, token: "BONK", recipient: null
+- "Gift 1 SOL to my friend" → amount: 1, token: "SOL", recipient: "my friend"
+- "Share 10 USDC with alice@email.com" → amount: 10, token: "USDC", recipient: "alice@email.com"
+
+Note: The recipient email is just for display/tracking. Anyone with the link can claim the drop.
+
 ### 7. HELP (help/assistance)
 {
   "intent": "help",

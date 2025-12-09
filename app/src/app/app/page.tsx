@@ -17,6 +17,7 @@ import {
   IntentStatus,
   IntentVaultInfo
 } from '@/lib/kryptos-contract';
+import { createDrop } from '@/lib/kryptos-drop';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { 
   Shield, 
@@ -1268,6 +1269,109 @@ Connect your wallet to start!`,
         });
         break;
       }
+
+      case 'create_drop': {
+        if (!connected || !publicKey) {
+          updateMessage(messageId, {
+            content: '❌ Please connect your wallet first.',
+            status: 'error',
+          });
+          return;
+        }
+
+        const { amount, token, recipient, expiryHours } = command.params;
+
+        // Resolve token
+        let tokenMint = resolveToken(token) || token;
+        const isNativeSol = !tokenMint || token?.toUpperCase() === 'SOL';
+
+        // If not SOL and not valid address, search for token
+        if (!isNativeSol && !isValidAddress(tokenMint)) {
+          const searchResults = await searchToken(token);
+          if (searchResults.length > 0) {
+            tokenMint = searchResults[0].mint;
+          } else {
+            updateMessage(messageId, {
+              content: `❌ Unknown token: \`${token}\`\n\n${getSupportedTokensHelp()}`,
+              status: 'error',
+            });
+            return;
+          }
+        }
+
+        updateMessage(messageId, { content: 'Looking up token info...', status: 'thinking' });
+
+        // Get token info and decimals
+        let tokenInfo: TokenInfo | null = null;
+        let decimals = 9;
+
+        if (!isNativeSol) {
+          tokenInfo = await getTokenInfo(tokenMint);
+          if (tokenInfo) {
+            decimals = tokenInfo.decimals;
+          } else {
+            // Fallback: get decimals from on-chain
+            try {
+              const { getMint } = await import('@solana/spl-token');
+              const mintAccount = await getMint(connection, new PublicKey(tokenMint));
+              decimals = mintAccount.decimals;
+              tokenInfo = {
+                mint: tokenMint,
+                symbol: token.toUpperCase(),
+                name: token.toUpperCase(),
+                decimals,
+              };
+            } catch (e) {
+              updateMessage(messageId, {
+                content: `❌ Could not find token: \`${formatAddress(tokenMint)}\``,
+                status: 'error',
+              });
+              return;
+            }
+          }
+        } else {
+          tokenInfo = {
+            mint: 'So11111111111111111111111111111111111111112',
+            symbol: 'SOL',
+            name: 'Solana',
+            decimals: 9,
+          };
+        }
+
+        const expiry = expiryHours || 168; // Default 7 days
+
+        // Build confirmation message
+        let confirmMsg = `🎁 **Drop Preview**\n\n`;
+        confirmMsg += `**Token:** ${tokenInfo.symbol}\n`;
+        confirmMsg += `**Amount:** ${amount} ${tokenInfo.symbol}\n`;
+        if (recipient) {
+          confirmMsg += `**Recipient:** ${recipient}\n`;
+        }
+        confirmMsg += `**Expires:** ${expiry} hours (${(expiry / 24).toFixed(1)} days)\n\n`;
+        confirmMsg += `**How it works:**\n`;
+        confirmMsg += `• Funds locked in secure escrow\n`;
+        confirmMsg += `• Anyone with link can claim\n`;
+        confirmMsg += `• Auto-refund if unclaimed after expiry\n\n`;
+        confirmMsg += `Type **confirm** to create drop link or **cancel** to abort.`;
+
+        updateMessage(messageId, {
+          content: confirmMsg,
+          status: 'confirming',
+          pendingAction: {
+            command: {
+              ...command,
+              params: {
+                ...command.params,
+                tokenMint: isNativeSol ? null : tokenMint,
+                decimals,
+                isNativeSol,
+              },
+            },
+            fromToken: tokenInfo,
+          },
+        });
+        break;
+      }
       
       default: {
         updateMessage(messageId, {
@@ -1701,6 +1805,68 @@ Connect your wallet to start!`,
         // Auto refresh after 2 seconds
         setTimeout(() => window.location.reload(), 2000);
       }
+    } else if (command.type === 'create_drop' && fromToken) {
+      // Create drop link
+      const { amount, tokenMint, decimals, isNativeSol, recipient, expiryHours } = command.params;
+      
+      try {
+        const result = await createDrop(
+          connection,
+          { publicKey, signTransaction, signAndSendTransaction },
+          isNativeSol ? null : tokenMint,
+          amount,
+          decimals,
+          expiryHours || 168
+        );
+        
+        if (result.success) {
+          let successMsg = `✅ **Drop Link Created!**\n\n`;
+          if (recipient) {
+            successMsg += `**For:** ${recipient}\n`;
+          }
+          successMsg += `**Amount:** ${amount} ${fromToken.symbol}\n`;
+          successMsg += `**Expires:** ${expiryHours || 168} hours\n\n`;
+          successMsg += `🔗 **Share this link:**\n${result.dropLink}\n\n`;
+          successMsg += `Anyone with this link can claim the ${fromToken.symbol}!\n\n🔄 Refreshing in 2s...`;
+          
+          updateMessage(messageId, {
+            content: successMsg,
+            status: 'done',
+            txSignature: result.signature,
+          });
+          
+          // Record to session history
+          addSessionTransaction({
+            type: 'drop' as any,
+            status: 'success',
+            signature: result.signature!,
+            details: {
+              fromToken: fromToken.symbol,
+              fromAmount: amount,
+              destination: recipient || 'Drop Link',
+            },
+          });
+          
+          // Auto refresh after 2 seconds
+          setTimeout(() => window.location.reload(), 2000);
+        } else {
+          updateMessage(messageId, {
+            content: `❌ **Drop Creation Failed**\n\n${result.error}\n\n🔄 Refreshing in 2s...`,
+            status: 'error',
+          });
+          
+          // Auto refresh after 2 seconds
+          setTimeout(() => window.location.reload(), 2000);
+        }
+      } catch (error: any) {
+        updateMessage(messageId, {
+          content: `❌ **Drop Creation Failed**\n\n${error.message}\n\n🔄 Refreshing in 2s...`,
+          status: 'error',
+        });
+        
+        // Auto refresh after 2 seconds
+        setTimeout(() => window.location.reload(), 2000);
+      }
     }
   };
 
@@ -1969,6 +2135,23 @@ Connect your wallet to start!`,
               tokenMint,
               isPercentage,
               isAll,
+            },
+            raw: userInput,
+          };
+          await processCommand(command, messageId);
+          break;
+        }
+
+        case 'create_drop': {
+          const { amount, token, recipient, expiryHours } = llmResult.params;
+          
+          const command: ParsedCommand = {
+            type: 'create_drop',
+            params: {
+              amount,
+              token,
+              recipient: recipient || null,
+              expiryHours: expiryHours || 168,
             },
             raw: userInput,
           };

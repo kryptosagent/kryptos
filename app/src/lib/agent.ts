@@ -144,7 +144,7 @@ export interface JupiterHoldingsResponse {
 }
 
 // Command types
-export type CommandType = 'swap' | 'transfer' | 'dca' | 'withdraw_dca' | 'close_dca' | 'list_dca' | 'limit_order' | 'list_limit_orders' | 'cancel_limit_order' | 'burn' | 'balance' | 'status' | 'price' | 'token' | 'help' | 'unknown';
+export type CommandType = 'swap' | 'transfer' | 'dca' | 'withdraw_dca' | 'close_dca' | 'list_dca' | 'limit_order' | 'list_limit_orders' | 'cancel_limit_order' | 'burn' | 'balance' | 'status' | 'price' | 'token' | 'help' | 'create_drop' | 'unknown';
 
 export interface ParsedCommand {
   type: CommandType;

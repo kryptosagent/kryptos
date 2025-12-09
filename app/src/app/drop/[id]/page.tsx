@@ -28,14 +28,8 @@ import {
 
 // SVG Icons
 const Icons = {
-  drop: (
-    <svg className="w-12 h-12 text-white" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-      <path d="M12 2L6 8h3v6h6V8h3L12 2z" />
-      <path d="M6 14v4a2 2 0 002 2h8a2 2 0 002-2v-4" />
-      <circle cx="8" cy="20" r="1" fill="currentColor" />
-      <circle cx="12" cy="22" r="1" fill="currentColor" />
-      <circle cx="16" cy="20" r="1" fill="currentColor" />
-    </svg>
+  kryptos: (
+    <img src="/logo.png" alt="KRYPTOS" className="w-12 h-12" />
   ),
   search: (
     <svg className="w-12 h-12 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -70,20 +64,6 @@ const Icons = {
       <rect x="3" y="8" width="18" height="14" rx="2" />
       <path d="M12 8v14M3 12h18" />
       <path d="M12 8c-2-2-4-3-4-3s2-3 4-1c2-2 4 1 4 1s-2 1-4 3z" />
-    </svg>
-  ),
-  solana: (
-    <svg className="w-10 h-10" viewBox="0 0 128 128" fill="none">
-      <defs>
-        <linearGradient id="sol-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#9945FF" />
-          <stop offset="50%" stopColor="#14F195" />
-          <stop offset="100%" stopColor="#00D1FF" />
-        </linearGradient>
-      </defs>
-      <path d="M25 98l15-15h63l-15 15H25z" fill="url(#sol-grad)" />
-      <path d="M25 30l15 15h63l-15-15H25z" fill="url(#sol-grad)" />
-      <path d="M25 64l15-15h63l-15 15H25z" fill="url(#sol-grad)" />
     </svg>
   ),
   token: (
@@ -377,15 +357,12 @@ export default function DropClaimPage() {
     <div className="min-h-screen bg-black flex items-center justify-center p-4">
       <div className="bg-zinc-900 rounded-2xl p-8 max-w-md w-full border border-zinc-800">
         <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">{Icons.drop}</div>
+          <div className="flex justify-center mb-4">{Icons.kryptos}</div>
           <h1 className="text-xl font-semibold text-white mb-1">KRYPTOS Drop</h1>
           <p className="text-zinc-500 text-sm">Someone sent you crypto</p>
         </div>
 
         <div className="bg-zinc-950 rounded-xl p-6 mb-6 text-center border border-zinc-800">
-          <div className="flex justify-center mb-3">
-            {dropInfo?.isNativeSol ? Icons.solana : Icons.token}
-          </div>
           <div className="text-3xl font-bold text-white">
             {formattedAmount} {tokenInfo.symbol}
           </div>
