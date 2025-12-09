@@ -1820,6 +1820,36 @@ Connect your wallet to start!`,
         );
         
         if (result.success) {
+          // Auto-download drop link as txt file
+          const dropContent = `KRYPTOS Drop Link
+================
+
+Drop Link: ${result.dropLink}
+
+Details:
+- Token: ${fromToken.symbol}
+- Amount: ${amount} ${fromToken.symbol}
+- Recipient: ${recipient || 'Anyone with link'}
+- Expires: ${expiryHours || 168} hours
+- Drop ID: ${result.dropId}
+- Escrow: ${result.escrowAddress}
+- Transaction: https://solscan.io/tx/${result.signature}
+
+Created: ${new Date().toLocaleString()}
+
+Share this link with anyone to let them claim the ${fromToken.symbol}!
+`;
+          
+          const blob = new Blob([dropContent], { type: 'text/plain' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `kryptos-drop-${result.dropId}.txt`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          
           let successMsg = `✅ **Drop Link Created!**\n\n`;
           if (recipient) {
             successMsg += `**For:** ${recipient}\n`;
@@ -1827,7 +1857,8 @@ Connect your wallet to start!`,
           successMsg += `**Amount:** ${amount} ${fromToken.symbol}\n`;
           successMsg += `**Expires:** ${expiryHours || 168} hours\n\n`;
           successMsg += `🔗 **Share this link:**\n${result.dropLink}\n\n`;
-          successMsg += `Anyone with this link can claim the ${fromToken.symbol}!\n\n🔄 Refreshing in 2s...`;
+          successMsg += `Anyone with this link can claim the ${fromToken.symbol}!\n\n`;
+          successMsg += `💾 **Link saved to:** \`kryptos-drop-${result.dropId}.txt\``;
           
           updateMessage(messageId, {
             content: successMsg,
@@ -1847,25 +1878,18 @@ Connect your wallet to start!`,
             },
           });
           
-          // Auto refresh after 2 seconds
-          setTimeout(() => window.location.reload(), 2000);
+          // NO auto refresh - keep the link visible
         } else {
           updateMessage(messageId, {
-            content: `❌ **Drop Creation Failed**\n\n${result.error}\n\n🔄 Refreshing in 2s...`,
+            content: `❌ **Drop Creation Failed**\n\n${result.error}`,
             status: 'error',
           });
-          
-          // Auto refresh after 2 seconds
-          setTimeout(() => window.location.reload(), 2000);
         }
       } catch (error: any) {
         updateMessage(messageId, {
-          content: `❌ **Drop Creation Failed**\n\n${error.message}\n\n🔄 Refreshing in 2s...`,
+          content: `❌ **Drop Creation Failed**\n\n${error.message}`,
           status: 'error',
         });
-        
-        // Auto refresh after 2 seconds
-        setTimeout(() => window.location.reload(), 2000);
       }
     }
   };
