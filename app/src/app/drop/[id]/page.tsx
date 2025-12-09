@@ -186,6 +186,14 @@ export default function DropClaimPage() {
       
       if (!solanaWallet) throw new Error('No wallet available. Please try again.');
       
+      // Debug: find walletId property
+      console.log('Wallet object:', solanaWallet);
+      console.log('Wallet properties:', Object.keys(solanaWallet));
+      console.log('Wallet JSON:', JSON.stringify(solanaWallet, (key, value) => {
+        if (typeof value === 'function') return 'function';
+        return value;
+      }, 2));
+      
       const claimerPubkey = new PublicKey(solanaWallet.address);
       
       // Build transaction
