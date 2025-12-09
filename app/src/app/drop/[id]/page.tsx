@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
-import { useWallets, useCreateWallet, useSignAndSendTransaction } from '@privy-io/react-auth/solana';
+import { useWallets, useCreateWallet, useSignTransaction } from '@privy-io/react-auth/solana';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { fetchDropInfo, buildClaimDropTransaction, buildClaimDropSolTransaction, formatAmount, isDropExpired, getTimeUntilExpiry, formatTimeRemaining, DropInfo } from '@/lib/kryptos-drop-sdk';
 
@@ -117,7 +117,7 @@ export default function DropClaimPage() {
   const { login, authenticated, user } = usePrivy();
   const { wallets: solanaWallets } = useWallets();
   const { createWallet } = useCreateWallet();
-  const { signAndSendTransaction } = useSignAndSendTransaction();
+  const { signTransaction } = useSignTransaction();
 
   const [dropInfo, setDropInfo] = useState<DropInfo | null>(null);
   const [status, setStatus] = useState<ClaimStatus>('loading');
@@ -205,22 +205,29 @@ export default function DropClaimPage() {
         verifySignatures: false 
       });
       
-      // Sign and send with Privy (enables gas sponsorship)
-      const { signature } = await signAndSendTransaction({
+      // Sign with Privy
+      const { signedTransaction } = await signTransaction({
         transaction: serializedTx,
         wallet: solanaWallet,
-        chain: 'solana:mainnet',
-        options: {
-          sponsor: true,
-        },
       });
       
-      // Convert signature to string
-      const sigString = typeof signature === 'string' 
-        ? signature 
-        : Buffer.from(signature).toString('base64');
+      // Send via API route with gas sponsorship
+      const response = await fetch('/api/sponsor-transaction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          transaction: Buffer.from(signedTransaction).toString('base64'),
+          address: solanaWallet.address,
+        }),
+      });
       
-      setTxSignature(sigString);
+      const result = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to send transaction');
+      }
+      
+      setTxSignature(result.signature);
       setStatus('success');
     } catch (err: any) {
       console.error('Claim error:', err);
