@@ -21,6 +21,7 @@ export function KryptosDropPrivyProvider({ children }: { children: React.ReactNo
         embeddedWallets: {
           solana: {
             createOnLogin: 'users-without-wallets',
+            rpcUrl: RPC_URL,
           },
         },
         externalWallets: {
@@ -28,12 +29,6 @@ export function KryptosDropPrivyProvider({ children }: { children: React.ReactNo
             connectors: solanaConnectors,
           },
         },
-        solanaClusters: [
-          {
-            name: 'mainnet-beta',
-            rpcUrl: RPC_URL,
-          },
-        ],
       }}
     >
       {children}
