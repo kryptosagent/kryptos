@@ -3,8 +3,8 @@ import { Keypair, VersionedTransaction, Transaction, Connection } from '@solana/
 
 export const runtime = 'nodejs';
 
-// Use Helius RPC with API key
-const HELIUS_API_KEY = process.env.NEXT_PUBLIC_HELIUS_API_KEY || '';
+// Use server-side env var first, then fallback
+const HELIUS_API_KEY = process.env.HELIUS_API_KEY || process.env.NEXT_PUBLIC_HELIUS_API_KEY || '';
 const RPC_URL = HELIUS_API_KEY 
   ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`
   : 'https://api.mainnet-beta.solana.com';
@@ -12,9 +12,13 @@ const RPC_URL = HELIUS_API_KEY
 const FEE_PAYER_PRIVATE_KEY = process.env.FEE_PAYER_PRIVATE_KEY!;
 const FEE_PAYER_ADDRESS = process.env.FEE_PAYER_ADDRESS!;
 
+// Log for debugging (remove after fix)
+console.log('RPC URL:', RPC_URL.includes('helius') ? 'Helius configured' : 'Public RPC');
+console.log('FEE_PAYER_ADDRESS:', FEE_PAYER_ADDRESS);
+
 const connection = new Connection(RPC_URL, 'confirmed');
 
-// Decode base58 without bs58 library
+// Decode base58
 function decodeBase58(str: string): Uint8Array {
   const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
   const bytes: number[] = [0];
@@ -49,8 +53,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Missing transaction data' }, { status: 400 });
     }
 
+    console.log('Processing transaction, length:', transactionBase64.length);
+
     // Initialize fee payer keypair
     const feePayerWallet = Keypair.fromSecretKey(decodeBase58(FEE_PAYER_PRIVATE_KEY));
+    console.log('Fee payer public key:', feePayerWallet.publicKey.toBase58());
 
     // Deserialize the transaction
     const transactionBuffer = Buffer.from(transactionBase64, 'base64');
@@ -61,31 +68,38 @@ export async function POST(req: NextRequest) {
     try {
       transaction = VersionedTransaction.deserialize(transactionBuffer);
       isVersioned = true;
+      console.log('Deserialized as VersionedTransaction');
     } catch {
       transaction = Transaction.from(transactionBuffer);
+      console.log('Deserialized as legacy Transaction');
     }
 
-    // Verify fee payer
     if (isVersioned) {
       const vTx = transaction as VersionedTransaction;
       const accountKeys = vTx.message.getAccountKeys();
       const feePayer = accountKeys.get(0);
       
+      console.log('Transaction fee payer:', feePayer?.toBase58());
+      console.log('Expected fee payer:', FEE_PAYER_ADDRESS);
+      
       if (!feePayer || feePayer.toBase58() !== FEE_PAYER_ADDRESS) {
-        console.error('Fee payer mismatch:', feePayer?.toBase58(), 'expected:', FEE_PAYER_ADDRESS);
         return NextResponse.json({ error: 'Invalid fee payer in transaction' }, { status: 403 });
       }
       
       // Sign with fee payer
       vTx.sign([feePayerWallet]);
+      console.log('Transaction signed');
       
       // Send transaction
       const signature = await connection.sendRawTransaction(vTx.serialize(), {
         skipPreflight: false,
         preflightCommitment: 'confirmed',
       });
+      console.log('Transaction sent:', signature);
       
       await connection.confirmTransaction(signature, 'confirmed');
+      console.log('Transaction confirmed');
+      
       return NextResponse.json({ signature });
     } else {
       const legacyTx = transaction as Transaction;
@@ -94,10 +108,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Invalid fee payer in transaction' }, { status: 403 });
       }
       
-      // Sign with fee payer
       legacyTx.partialSign(feePayerWallet);
       
-      // Send transaction
       const signature = await connection.sendRawTransaction(legacyTx.serialize(), {
         skipPreflight: false,
         preflightCommitment: 'confirmed',
