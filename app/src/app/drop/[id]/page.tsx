@@ -99,8 +99,20 @@ type ClaimStatus = 'loading' | 'ready' | 'claiming' | 'success' | 'error' | 'exp
 export default function DropClaimPage() {
   const params = useParams();
   const searchParams = useSearchParams();
-  const dropId = params.id as string;
-  const creatorParam = searchParams.get('c');
+  const rawId = params.id as string;
+  
+  // Support both formats: /drop/dropId?c=creator and /drop/dropId_creator
+  let dropId: string;
+  let creatorParam: string | null;
+  
+  if (rawId.includes('_')) {
+    const parts = rawId.split('_');
+    dropId = parts[0];
+    creatorParam = parts[1];
+  } else {
+    dropId = rawId;
+    creatorParam = searchParams.get('c');
+  }
 
   const { login, authenticated, user } = usePrivy();
   const { wallets: solanaWallets } = useWallets();
@@ -161,34 +173,57 @@ export default function DropClaimPage() {
     if (!dropInfo || !authenticated) return;
     setStatus('claiming');
     setError(null);
+    
     try {
+      // Get or create wallet
       let solanaWallet = solanaWallets[0];
+      
       if (!solanaWallet) {
         await createWallet();
         await new Promise(r => setTimeout(r, 2000));
         solanaWallet = solanaWallets[0];
       }
-      if (!solanaWallet) throw new Error('Could not create wallet');
+      
+      if (!solanaWallet) throw new Error('No wallet available. Please try again.');
+      
       const claimerPubkey = new PublicKey(solanaWallet.address);
+      
+      // Build transaction
       const transaction = dropInfo.isNativeSol
         ? await buildClaimDropSolTransaction(dropInfo, claimerPubkey)
         : await buildClaimDropTransaction(connection, dropInfo, claimerPubkey);
+      
+      // Get blockhash
       const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = claimerPubkey;
       
-      // Serialize transaction to Uint8Array for Privy
-      const serializedTx = transaction.serialize({ requireAllSignatures: false });
+      // Serialize for signing
+      const serializedTx = transaction.serialize({ 
+        requireAllSignatures: false,
+        verifySignatures: false 
+      });
       
-      // Sign with Privy wallet (returns { signedTransaction: Uint8Array })
+      // Sign with Privy wallet
       const signResult = await solanaWallet.signTransaction({ transaction: serializedTx });
       
-      // Send the signed transaction
-      const signature = await connection.sendRawTransaction(signResult.signedTransaction);
-      await connection.confirmTransaction({ signature, blockhash, lastValidBlockHeight });
+      // Send via our own connection (bypass Privy RPC)
+      const signature = await connection.sendRawTransaction(signResult.signedTransaction, {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
+      
+      // Wait for confirmation
+      await connection.confirmTransaction({ 
+        signature, 
+        blockhash, 
+        lastValidBlockHeight 
+      });
+      
       setTxSignature(signature);
       setStatus('success');
     } catch (err: any) {
+      console.error('Claim error:', err);
       setStatus('error');
       setError(err.message || 'Failed to claim');
     }
