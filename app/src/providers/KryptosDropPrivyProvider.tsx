@@ -6,8 +6,6 @@ const solanaConnectors = toSolanaWalletConnectors({
   shouldAutoConnect: true,
 });
 
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
-
 export function KryptosDropPrivyProvider({ children }: { children: React.ReactNode }) {
   return (
     <PrivyProvider
@@ -21,7 +19,6 @@ export function KryptosDropPrivyProvider({ children }: { children: React.ReactNo
         embeddedWallets: {
           solana: {
             createOnLogin: 'users-without-wallets',
-            rpcUrl: RPC_URL,
           },
         },
         externalWallets: {
