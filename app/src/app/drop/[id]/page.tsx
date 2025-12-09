@@ -114,7 +114,7 @@ export default function DropClaimPage() {
     creatorParam = searchParams.get('c');
   }
 
-  const { login, authenticated, user } = usePrivy();
+  const { login, authenticated, user, getAccessToken } = usePrivy();
   const { wallets: solanaWallets } = useWallets();
   const { createWallet } = useCreateWallet();
 
@@ -217,17 +217,22 @@ export default function DropClaimPage() {
         || (solanaWalletAccount as any)?.walletId
         || (solanaWalletAccount as any)?.id;
       
-      console.log('Wallet address:', solanaWallet.address);
-      console.log('LinkedAccount:', solanaWalletAccount);
-      console.log('WalletId found:', walletId);
-      
       if (!walletId) {
         throw new Error('Wallet ID not found. Please try with an embedded wallet.');
       }
       
+      // Get Privy access token for authorization
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        throw new Error('Failed to get access token. Please re-login.');
+      }
+      
       const response = await fetch('/api/sponsor-transaction', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${accessToken}`,
+        },
         body: JSON.stringify({
           walletId,
           transactionBase64,
