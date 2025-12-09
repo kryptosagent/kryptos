@@ -7,6 +7,7 @@ import {
   useWallets,
   useCreateWallet,
   useSignTransaction,
+  useExportWallet,
   type ConnectedStandardSolanaWallet,
 } from '@privy-io/react-auth/solana';
 import {
@@ -138,11 +139,11 @@ export default function DropClaimPage() {
     creatorParam = searchParams.get('c');
   }
 
-  const { login, authenticated, user, getAccessToken, exportWallet } = usePrivy();
+  const { login, authenticated, user, getAccessToken } = usePrivy();
   const { ready: walletsReady, wallets: solanaWallets } = useWallets();
   const { createWallet } = useCreateWallet();
   const { signTransaction } = useSignTransaction();
-
+  const { exportWallet: exportSolanaWallet } = useExportWallet();
   const [dropInfo, setDropInfo] = useState<DropInfo | null>(null);
   const [status, setStatus] = useState<ClaimStatus>('loading');
   const [error, setError] = useState<string | null>(null);
@@ -440,7 +441,7 @@ export default function DropClaimPage() {
                 onClick={async () => {
                   const solWallet = solanaWallets[0];
                   if (solWallet?.address) {
-                    await exportWallet({ address: solWallet.address });
+                    await exportSolanaWallet({ address: solWallet.address });
                   }
                 }}
                 className="bg-zinc-800 hover:bg-zinc-700 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
