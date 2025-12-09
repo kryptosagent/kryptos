@@ -223,19 +223,20 @@ export default function DropClaimPage() {
           w?.isEmbedded === true
         );
 
-      let solanaWallet: any =
-        pickEmbedded(solanaWallets as any) ||
-        solanaWallets?.[0];
+      let solanaWallet: any = pickEmbedded(solanaWallets as any);
 
-      // 2) If none, create embedded wallet
       if (!solanaWallet) {
         await createWallet();
-        // Best-effort wait for state update
         await sleep(800);
-        solanaWallet =
-          pickEmbedded(solanaWallets as any) ||
-          solanaWallets?.[0];
+        solanaWallet = pickEmbedded(solanaWallets as any);
       }
+
+      if (!solanaWallet) {
+        throw new Error(
+          'Embedded wallet not found. Please try again or re-login.'
+        );
+      }
+
 
       // 3) Fallback from linkedAccounts if hook still empty (type-safe)
       const solanaWalletAccount =
