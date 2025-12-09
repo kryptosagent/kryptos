@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
-import { useWallets, useCreateWallet, useSignTransaction } from '@privy-io/react-auth/solana';
+import { useWallets, useCreateWallet, useSignAndSendTransaction } from '@privy-io/react-auth/solana';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { fetchDropInfo, buildClaimDropTransaction, buildClaimDropSolTransaction, formatAmount, isDropExpired, getTimeUntilExpiry, formatTimeRemaining, DropInfo } from '@/lib/kryptos-drop-sdk';
 
@@ -117,7 +117,7 @@ export default function DropClaimPage() {
   const { login, authenticated, user } = usePrivy();
   const { wallets: solanaWallets } = useWallets();
   const { createWallet } = useCreateWallet();
-  const { signTransaction } = useSignTransaction();
+  const { signAndSendTransaction } = useSignAndSendTransaction();
 
   const [dropInfo, setDropInfo] = useState<DropInfo | null>(null);
   const [status, setStatus] = useState<ClaimStatus>('loading');
@@ -205,26 +205,22 @@ export default function DropClaimPage() {
         verifySignatures: false 
       });
       
-      // Sign with Privy hook (bypass RPC requirement)
-      const { signedTransaction } = await signTransaction({
+      // Sign and send with Privy (enables gas sponsorship)
+      const { signature } = await signAndSendTransaction({
         transaction: serializedTx,
         wallet: solanaWallet,
+        chain: 'solana:mainnet',
+        options: {
+          sponsor: true,
+        },
       });
       
-      // Send via our own connection
-      const signature = await connection.sendRawTransaction(signedTransaction, {
-        skipPreflight: false,
-        preflightCommitment: 'confirmed',
-      });
+      // Convert signature to string
+      const sigString = typeof signature === 'string' 
+        ? signature 
+        : Buffer.from(signature).toString('base64');
       
-      // Wait for confirmation
-      await connection.confirmTransaction({ 
-        signature, 
-        blockhash, 
-        lastValidBlockHeight 
-      });
-      
-      setTxSignature(signature);
+      setTxSignature(sigString);
       setStatus('success');
     } catch (err: any) {
       console.error('Claim error:', err);
