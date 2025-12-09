@@ -158,7 +158,7 @@ export default function DropClaimPage() {
     creatorParam = searchParams.get('c');
   }
 
-  const { login, authenticated, user, getAccessToken } = usePrivy();
+  const { login, authenticated, user, getAccessToken, exportWallet } = usePrivy();
   const { ready: walletsReady, wallets: solanaWallets } = useWallets();
   const { createWallet } = useCreateWallet();
   const { signTransaction } = useSignTransaction();
@@ -419,16 +419,56 @@ export default function DropClaimPage() {
             <p className="text-zinc-500 text-sm mb-3">
               {formattedAmount} {tokenInfo.symbol} received
             </p>
-            {txSignature && (
-              <a
-                href={`https://solscan.io/tx/${txSignature}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-zinc-400 hover:text-white text-sm transition-colors"
-              >
-                View on Solscan {Icons.external}
-              </a>
+            
+            {/* Wallet Info */}
+            {solanaWallets[0]?.address && (
+              <div className="bg-zinc-900 rounded-lg p-3 mb-3">
+                <p className="text-zinc-500 text-xs mb-1">Your Wallet</p>
+                <p className="text-white font-mono text-sm">
+                  {solanaWallets[0].address.slice(0, 8)}...{solanaWallets[0].address.slice(-6)}
+                </p>
+              </div>
             )}
+            
+            {/* Links */}
+            <div className="space-y-2 mb-4">
+              {txSignature && (
+                <a
+                  href={`https://solscan.io/tx/${txSignature}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-zinc-400 hover:text-white text-sm transition-colors block"
+                >
+                  View on Solscan {Icons.external}
+                </a>
+              )}
+              {solanaWallets[0]?.address && (
+                <a
+                  href={`https://solscan.io/account/${solanaWallets[0].address}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-zinc-400 hover:text-white text-sm transition-colors block"
+                >
+                  View Wallet {Icons.external}
+                </a>
+              )}
+            </div>
+            
+            {/* Export Wallet */}
+            <div className="pt-4 border-t border-zinc-800">
+              <p className="text-zinc-500 text-xs mb-2">
+                Access your wallet in Phantom or Solflare
+              </p>
+              <button
+                onClick={() => exportWallet()}
+                className="bg-zinc-800 hover:bg-zinc-700 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
+              >
+                Export Private Key
+              </button>
+              <p className="text-zinc-600 text-xs mt-2">
+                Import this key into Phantom to access your funds anytime
+              </p>
+            </div>
           </div>
         )}
 
