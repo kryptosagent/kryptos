@@ -1,11 +1,12 @@
 'use client';
-
 import { PrivyProvider } from '@privy-io/react-auth';
 import { toSolanaWalletConnectors } from '@privy-io/react-auth/solana';
 
 const solanaConnectors = toSolanaWalletConnectors({
   shouldAutoConnect: true,
 });
+
+const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
 export function KryptosDropPrivyProvider({ children }: { children: React.ReactNode }) {
   return (
@@ -15,7 +16,6 @@ export function KryptosDropPrivyProvider({ children }: { children: React.ReactNo
         appearance: {
           theme: 'dark',
           accentColor: '#00FF88',
-          logo: '/kryptos-logo.png',
         },
         loginMethods: ['google', 'twitter', 'email'],
         embeddedWallets: {
@@ -28,6 +28,12 @@ export function KryptosDropPrivyProvider({ children }: { children: React.ReactNo
             connectors: solanaConnectors,
           },
         },
+        solanaClusters: [
+          {
+            name: 'mainnet-beta',
+            rpcUrl: RPC_URL,
+          },
+        ],
       }}
     >
       {children}
