@@ -1,6 +1,11 @@
 'use client';
 
-import { KryptosDropPrivyProvider } from '@/providers/KryptosDropPrivyProvider';
+import dynamic from 'next/dynamic';
+
+const KryptosDropPrivyProvider = dynamic(
+  () => import('@/providers/KryptosDropPrivyProvider').then(mod => mod.KryptosDropPrivyProvider),
+  { ssr: false }
+);
 
 export default function DropLayout({
   children,
