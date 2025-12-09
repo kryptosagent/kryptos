@@ -13,10 +13,10 @@ const privy = new PrivyClient({
 type SignAndSendSolanaRpcBody = {
   method: 'signAndSendTransaction';
   caip2: typeof SOLANA_MAINNET_CAIP2;
+  sponsor?: boolean; // ✅ pindah ke top-level
   params: {
     transaction: string;
     encoding: 'base64';
-    sponsor?: boolean;
   };
   authorization_context?: {
     user_jwts: string[];
@@ -48,6 +48,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    try {
+      await privy.utils().auth().verifyAuthToken(userJwt);
+    } catch {
+      return NextResponse.json(
+        { error: 'Invalid Privy access token' },
+        { status: 401 }
+      );
+    }
+
+
     const { walletId, transactionBase64 } = await req.json();
 
     if (!walletId || !transactionBase64) {
@@ -58,17 +68,18 @@ export async function POST(req: NextRequest) {
     }
 
     const body: SignAndSendSolanaRpcBody = {
-      method: 'signAndSendTransaction',
-      caip2: SOLANA_MAINNET_CAIP2,
-      params: {
-        transaction: transactionBase64,
-        encoding: 'base64',
-        sponsor: true,
-      },
-      authorization_context: {
-        user_jwts: [userJwt],
-      },
-    };
+  method: 'signAndSendTransaction',
+  caip2: SOLANA_MAINNET_CAIP2,
+  sponsor: true, // ✅ top-level
+  params: {
+    transaction: transactionBase64,
+    encoding: 'base64',
+  },
+  authorization_context: {
+    user_jwts: [userJwt],
+  },
+};
+
 
     const res = (await (privy as any).wallets().rpc(
       walletId,

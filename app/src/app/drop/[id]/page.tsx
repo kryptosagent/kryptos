@@ -94,6 +94,39 @@ const TOKEN_METADATA: Record<string, { symbol: string; decimals: number }> = {
 
 const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
+// helpers
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+function uint8ToBase64(bytes: Uint8Array) {
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+// Type guard untuk linkedAccounts (Solana wallet)
+type SolanaLinkedWalletAccount = {
+  type: 'wallet';
+  chainType: 'solana';
+  address: string;
+  id: string;
+  walletClientType?: string;
+};
+
+function isSolanaLinkedWalletAccount(
+  account: unknown
+): account is SolanaLinkedWalletAccount {
+  const a = account as any;
+  return (
+    a &&
+    a.type === 'wallet' &&
+    a.chainType === 'solana' &&
+    typeof a.address === 'string' &&
+    typeof a.id === 'string'
+  );
+}
+
 type ClaimStatus = 'loading' | 'ready' | 'claiming' | 'success' | 'error' | 'expired' | 'already_claimed' | 'not_found';
 
 export default function DropClaimPage() {
@@ -170,81 +203,127 @@ export default function DropClaimPage() {
   };
 
   const handleClaim = async () => {
-    if (!dropInfo || !authenticated) return;
+    if (!dropInfo) return;
+
+    if (!authenticated) {
+      setError('Please sign in to claim.');
+      setStatus('ready');
+      return;
+    }
+
     setStatus('claiming');
     setError(null);
-    
+
     try {
-      // Get or create wallet
-      let solanaWallet = solanaWallets[0];
-      
+      // 1) Prefer embedded wallet for gas sponsorship
+      const pickEmbedded = (ws: any[]) =>
+        ws.find(w =>
+          w?.walletClientType === 'privy' ||
+          w?.connectorType === 'embedded' ||
+          w?.isEmbedded === true
+        );
+
+      let solanaWallet: any =
+        pickEmbedded(solanaWallets as any) ||
+        solanaWallets?.[0];
+
+      // 2) If none, create embedded wallet
       if (!solanaWallet) {
         await createWallet();
-        await new Promise(r => setTimeout(r, 2000));
-        solanaWallet = solanaWallets[0];
+        // Best-effort wait for state update
+        await sleep(800);
+        solanaWallet =
+          pickEmbedded(solanaWallets as any) ||
+          solanaWallets?.[0];
       }
-      
-      if (!solanaWallet) throw new Error('No wallet available. Please try again.');
-      
+
+      // 3) Fallback from linkedAccounts if hook still empty (type-safe)
+      const solanaWalletAccount =
+        (user?.linkedAccounts ?? []).find(isSolanaLinkedWalletAccount) as
+          | SolanaLinkedWalletAccount
+          | undefined;
+
+      if (!solanaWallet && solanaWalletAccount?.address) {
+        solanaWallet = {
+          address: solanaWalletAccount.address,
+          id: solanaWalletAccount.id,
+          walletClientType: solanaWalletAccount.walletClientType,
+        };
+      }
+
+      if (!solanaWallet?.address) {
+        throw new Error('No Solana wallet available. Please try again.');
+      }
+
+      // 4) Enforce embedded wallet for sponsorship
+      const isEmbedded =
+        solanaWallet?.walletClientType === 'privy' ||
+        solanaWallet?.connectorType === 'embedded' ||
+        solanaWallet?.isEmbedded === true;
+
+      if (!isEmbedded) {
+        throw new Error(
+          'Gas sponsorship only works with embedded wallets. Please use the embedded wallet to claim.'
+        );
+      }
+
+      // 5) Get walletId (source of truth: wallet object)
+      const walletId =
+        solanaWallet?.id ||
+        solanaWalletAccount?.id;
+
+      if (!walletId) {
+        throw new Error(
+          'Wallet ID not found. Please re-login or re-create embedded wallet.'
+        );
+      }
+
       const claimerPubkey = new PublicKey(solanaWallet.address);
-      
-      // Build transaction
+
+      // 6) Build transaction
       const transaction = dropInfo.isNativeSol
         ? await buildClaimDropSolTransaction(dropInfo, claimerPubkey)
         : await buildClaimDropTransaction(connection, dropInfo, claimerPubkey);
-      
-      // Get blockhash
-      const { blockhash, lastValidBlockHeight } = await connection.getLatestBlockhash();
+
+      // 7) Set blockhash + fee payer (Privy may override fee payer for sponsorship)
+      const { blockhash } = await connection.getLatestBlockhash();
       transaction.recentBlockhash = blockhash;
       transaction.feePayer = claimerPubkey;
-      
-      // Serialize for signing
-      const serializedTx = transaction.serialize({ 
+
+      // 8) Serialize
+      const serializedTx = transaction.serialize({
         requireAllSignatures: false,
-        verifySignatures: false 
+        verifySignatures: false,
       });
-      
-      // Send via API route with gas sponsorship (Privy signs on server)
-      const transactionBase64 = Buffer.from(serializedTx).toString('base64');
-      
-      // Get walletId from user.linkedAccounts
-      const solanaWalletAccount = user?.linkedAccounts?.find(
-        (account: any) => account.type === 'wallet' && account.chainType === 'solana'
-      );
-      
-      // Try multiple sources for walletId
-      const walletId = (solanaWallet as any).id 
-        || (solanaWalletAccount as any)?.walletId
-        || (solanaWalletAccount as any)?.id;
-      
-      if (!walletId) {
-        throw new Error('Wallet ID not found. Please try with an embedded wallet.');
-      }
-      
-      // Get Privy access token for authorization
+
+      // 9) Safe base64 for browser
+      const transactionBase64 = uint8ToBase64(serializedTx);
+
+      // 10) Get Privy access token
       const accessToken = await getAccessToken();
-      if (!accessToken) {
-        throw new Error('Failed to get access token. Please re-login.');
+
+      if (!accessToken || accessToken.split('.').length !== 3) {
+        throw new Error('Invalid access token. Please re-login.');
       }
-      
+
       const response = await fetch('/api/sponsor-transaction', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Bearer ${accessToken}`,
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
           walletId,
           transactionBase64,
         }),
       });
-      
+
       const result = await response.json();
-      
+
       if (!response.ok) {
         throw new Error(result.error || 'Failed to send transaction');
       }
-      
+
       setTxSignature(result.signature);
       setStatus('success');
     } catch (err: any) {
@@ -253,6 +332,7 @@ export default function DropClaimPage() {
       setError(err.message || 'Failed to claim');
     }
   };
+
 
   const tokenInfo = getTokenInfo();
   const formattedAmount = dropInfo ? formatAmount(dropInfo.amount, tokenInfo.decimals) : '0';
