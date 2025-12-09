@@ -437,7 +437,12 @@ export default function DropClaimPage() {
                 Access your wallet in Phantom or Solflare
               </p>
               <button
-                onClick={() => exportWallet()}
+                onClick={() => {
+                  const solWallet = solanaWallets[0];
+                  if (solWallet?.address) {
+                    exportWallet({ address: solWallet.address });
+                  }
+                }}
                 className="bg-zinc-800 hover:bg-zinc-700 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
               >
                 Export Private Key
