@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { usePrivy } from '@privy-io/react-auth';
+import { usePrivy, useSolanaWallets } from '@privy-io/react-auth';
 import {
   useWallets,
   useCreateWallet,
@@ -138,7 +138,8 @@ export default function DropClaimPage() {
     creatorParam = searchParams.get('c');
   }
 
-  const { login, authenticated, user, getAccessToken, exportWallet } = usePrivy();
+  const { login, authenticated, user, getAccessToken } = usePrivy();
+  const { exportWallet: exportSolanaWallet } = useSolanaWallets();
   const { ready: walletsReady, wallets: solanaWallets } = useWallets();
   const { createWallet } = useCreateWallet();
   const { signTransaction } = useSignTransaction();
@@ -440,7 +441,7 @@ export default function DropClaimPage() {
                 onClick={() => {
                   const solWallet = solanaWallets[0];
                   if (solWallet?.address) {
-                    exportWallet({ address: solWallet.address });
+                    exportSolanaWallet({ address: solWallet.address });
                   }
                 }}
                 className="bg-zinc-800 hover:bg-zinc-700 text-white font-medium py-2 px-4 rounded-lg transition-colors text-sm"
