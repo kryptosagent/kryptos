@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
-import { useWallets, useCreateWallet } from '@privy-io/react-auth/solana';
+import { useWallets, useCreateWallet, useSignTransaction } from '@privy-io/react-auth/solana';
 import { Connection, PublicKey } from '@solana/web3.js';
 import { fetchDropInfo, buildClaimDropTransaction, buildClaimDropSolTransaction, formatAmount, isDropExpired, getTimeUntilExpiry, formatTimeRemaining, DropInfo } from '@/lib/kryptos-drop-sdk';
 
@@ -117,6 +117,7 @@ export default function DropClaimPage() {
   const { login, authenticated, user } = usePrivy();
   const { wallets: solanaWallets } = useWallets();
   const { createWallet } = useCreateWallet();
+  const { signTransaction } = useSignTransaction();
 
   const [dropInfo, setDropInfo] = useState<DropInfo | null>(null);
   const [status, setStatus] = useState<ClaimStatus>('loading');
@@ -204,11 +205,14 @@ export default function DropClaimPage() {
         verifySignatures: false 
       });
       
-      // Sign with Privy wallet
-      const signResult = await solanaWallet.signTransaction({ transaction: serializedTx });
+      // Sign with Privy hook (bypass RPC requirement)
+      const { signedTransaction } = await signTransaction({
+        transaction: serializedTx,
+        wallet: solanaWallet,
+      });
       
-      // Send via our own connection (bypass Privy RPC)
-      const signature = await connection.sendRawTransaction(signResult.signedTransaction, {
+      // Send via our own connection
+      const signature = await connection.sendRawTransaction(signedTransaction, {
         skipPreflight: false,
         preflightCommitment: 'confirmed',
       });
