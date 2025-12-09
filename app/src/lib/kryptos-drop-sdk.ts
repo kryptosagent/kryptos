@@ -4,8 +4,8 @@ import { TOKEN_PROGRAM_ID, TOKEN_2022_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, g
 const PROGRAM_ID = new PublicKey('CrvSTnNtciVF2q2rRui19WwAdvxpWjK6faRub9xRcesK');
 
 // Instruction discriminators
-const CLAIM_DROP_SOL_DISCRIMINATOR = Buffer.from([51, 195, 91, 234, 181, 48, 83, 157]);
-const CLAIM_DROP_DISCRIMINATOR = Buffer.from([149, 125, 142, 244, 24, 188, 170, 108]);
+const CLAIM_DROP_SOL_DISCRIMINATOR = Buffer.from([128, 164, 41, 23, 50, 110, 114, 150]);
+const CLAIM_DROP_DISCRIMINATOR = Buffer.from([157, 29, 89, 14, 81, 203, 107, 58]);
 
 export interface DropInfo {
   dropId: string;
@@ -122,7 +122,7 @@ export function formatAmount(amount: bigint, decimals: number): string {
   const divisor = BigInt(10 ** decimals);
   const whole = amount / divisor;
   const fraction = amount % divisor;
-  if (fraction === 0n) return whole.toString();
+  if (fraction === BigInt(0)) return whole.toString();
   const fractionStr = fraction.toString().padStart(decimals, '0').replace(/0+$/, '');
   return `${whole}.${fractionStr}`;
 }
