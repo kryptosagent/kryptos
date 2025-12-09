@@ -3,7 +3,12 @@ import { Keypair, VersionedTransaction, Transaction, Connection } from '@solana/
 
 export const runtime = 'nodejs';
 
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
+// Use Helius RPC with API key
+const HELIUS_API_KEY = process.env.NEXT_PUBLIC_HELIUS_API_KEY || '';
+const RPC_URL = HELIUS_API_KEY 
+  ? `https://mainnet.helius-rpc.com/?api-key=${HELIUS_API_KEY}`
+  : 'https://api.mainnet-beta.solana.com';
+
 const FEE_PAYER_PRIVATE_KEY = process.env.FEE_PAYER_PRIVATE_KEY!;
 const FEE_PAYER_ADDRESS = process.env.FEE_PAYER_ADDRESS!;
 
