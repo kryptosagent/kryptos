@@ -30,7 +30,7 @@ import {
 // SVG Icons
 const Icons = {
   kryptos: (
-    <img src="/logo.png" alt="KRYPTOS" className="w-12 h-12" />
+    <img src="/logo.png" alt="KRYPTOS" className="w-12 h-12 rounded-full" />
   ),
   search: (
     <svg className="w-12 h-12 text-zinc-500" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -359,8 +359,8 @@ export default function DropClaimPage() {
       <div className="bg-zinc-900 rounded-2xl p-8 max-w-md w-full border border-zinc-800">
         <div className="text-center mb-8">
           <div className="flex justify-center mb-4">{Icons.kryptos}</div>
-          <h1 className="text-xl font-semibold text-white mb-1">KRYPTOS Drop</h1>
-          <p className="text-zinc-500 text-sm">Someone sent you crypto</p>
+          <h1 className="text-xl font-semibold text-white mb-1">KRYPTOS DROP</h1>
+          <p className="text-zinc-500 text-sm">Someone sent you crypto!</p>
         </div>
 
         <div className="bg-zinc-950 rounded-xl p-6 mb-6 text-center border border-zinc-800">

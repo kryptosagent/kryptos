@@ -1358,7 +1358,12 @@ Example: \`Swap 1 SOL to EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\``;
 export function getHelpMessage(): string {
   return `🔒 **KRYPTOS Commands**
 
-**Burn Tokens:** 🔥
+**Drop Links (Send to Anyone):**
+\`Drop 0.1 SOL to john@gmail.com\` - Create shareable link
+\`Send 100 USDC via link\` - Anyone can claim
+\`Gift 1 SOL to my friend\` - No wallet needed to receive
+
+**Burn Tokens:**
 \`Burn 100 BONK\` - Burn specific amount
 \`Burn 50% USDC\` - Burn percentage of balance
 \`Burn all WIF\` - Burn entire balance
@@ -1393,5 +1398,6 @@ export function getHelpMessage(): string {
 \`Transfer 0.5 SOL to [wallet address]\`
 
 All swaps are MEV-protected.
+Drop links auto-refund if unclaimed after 7 days.
 DCA & Limit Orders can be cancelled anytime with full fund recovery.`;
 }

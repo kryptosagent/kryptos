@@ -82,8 +82,20 @@ interface Message {
 
 // Format message content with markdown-like syntax
 function FormattedMessage({ content }: { content: string }) {
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+
+  const handleCopyLink = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      setCopiedUrl(url);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
   const formatText = (text: string) => {
-    const parts = text.split(/(\*\*.*?\*\*|`.*?`|\[.*?\]\(.*?\)|\n)/g);
+    // Split by markdown patterns AND drop link URLs
+    const parts = text.split(/(\*\*.*?\*\*|`.*?`|\[.*?\]\(.*?\)|\n|https:\/\/www\.kryptosagent\.xyz\/drop\/[^\s]+)/g);
     
     return parts.map((part, i) => {
       if (part.startsWith('**') && part.endsWith('**')) {
@@ -108,6 +120,24 @@ function FormattedMessage({ content }: { content: string }) {
             </a>
           );
         }
+      }
+      // Drop link - make it clickable to copy
+      if (part.startsWith('https://www.kryptosagent.xyz/drop/')) {
+        const isCopied = copiedUrl === part;
+        return (
+          <button
+            key={i}
+            onClick={() => handleCopyLink(part)}
+            className="group relative bg-zinc-800 hover:bg-zinc-700 px-3 py-2 rounded-lg text-left transition-all duration-200 border border-zinc-700 hover:border-zinc-500 block w-full my-2"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-white text-xs md:text-sm font-mono break-all">{part}</span>
+              <span className={`flex-shrink-0 text-xs px-2 py-1 rounded ${isCopied ? 'bg-green-500/20 text-green-400' : 'bg-zinc-600 text-zinc-300 group-hover:bg-zinc-500'}`}>
+                {isCopied ? '✓ Copied!' : 'Click to copy'}
+              </span>
+            </div>
+          </button>
+        );
       }
       if (part === '\n') {
         return <br key={i} />;
@@ -1856,7 +1886,7 @@ Share this link with anyone to let them claim the ${fromToken.symbol}!
           }
           successMsg += `**Amount:** ${amount} ${fromToken.symbol}\n`;
           successMsg += `**Expires:** ${expiryHours || 168} hours\n\n`;
-          successMsg += `🔗 **Share this link:**\n${result.dropLink}\n\n`;
+          successMsg += `🔗 **Share this link (click to copy):**\n${result.dropLink}\n\n`;
           successMsg += `Anyone with this link can claim the ${fromToken.symbol}!\n\n`;
           successMsg += `💾 **Link saved to:** \`kryptos-drop-${result.dropId}.txt\``;
           
