@@ -7,6 +7,7 @@ import {
   useWallets,
   useCreateWallet,
   useSignTransaction,
+  type ConnectedStandardSolanaWallet,
 } from '@privy-io/react-auth/solana';
 import {
   Connection,
@@ -105,9 +106,9 @@ const Icons = {
 };
 
 const TOKEN_METADATA: Record<string, { symbol: string; decimals: number }> = {
-  So11111111111111111111111111111111111111112: { symbol: 'SOL', decimals: 9 },
-  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: { symbol: 'USDC', decimals: 6 },
-  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: { symbol: 'USDT', decimals: 6 },
+  'So11111111111111111111111111111111111111112': { symbol: 'SOL', decimals: 9 },
+  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': { symbol: 'USDC', decimals: 6 },
+  'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB': { symbol: 'USDT', decimals: 6 },
 };
 
 const RPC_URL =
@@ -115,6 +116,8 @@ const RPC_URL =
 
 const FEE_PAYER_ADDRESS =
   process.env.NEXT_PUBLIC_SOLANA_FEE_PAYER_ADDRESS;
+
+const CHAIN = 'solana:mainnet' as const;
 
 // helpers
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -125,28 +128,6 @@ function uint8ToBase64(bytes: Uint8Array) {
     binary += String.fromCharCode(bytes[i]);
   }
   return btoa(binary);
-}
-
-// Type guard untuk linkedAccounts (Solana wallet)
-type SolanaLinkedWalletAccount = {
-  type: 'wallet';
-  chainType: 'solana';
-  address: string;
-  id: string;
-  walletClientType?: string;
-};
-
-function isSolanaLinkedWalletAccount(
-  account: unknown
-): account is SolanaLinkedWalletAccount {
-  const a = account as any;
-  return (
-    a &&
-    a.type === 'wallet' &&
-    a.chainType === 'solana' &&
-    typeof a.address === 'string' &&
-    typeof a.id === 'string'
-  );
 }
 
 type ClaimStatus =
@@ -178,9 +159,9 @@ export default function DropClaimPage() {
   }
 
   const { login, authenticated, user, getAccessToken } = usePrivy();
-  const { wallets: solanaWallets } = useWallets();
+  const { ready: walletsReady, wallets: solanaWallets } = useWallets();
   const { createWallet } = useCreateWallet();
-  const { signTransaction } = useSignTransaction(); // ✅ official Solana hook :contentReference[oaicite:2]{index=2}
+  const { signTransaction } = useSignTransaction();
 
   const [dropInfo, setDropInfo] = useState<DropInfo | null>(null);
   const [status, setStatus] = useState<ClaimStatus>('loading');
@@ -244,6 +225,16 @@ export default function DropClaimPage() {
     );
   };
 
+  const pickEmbedded = (ws: ConnectedStandardSolanaWallet[]) =>
+    ws.find(w => {
+      const clientType = String((w as any)?.walletClientType ?? '').toLowerCase();
+      return (
+        clientType.includes('privy') ||
+        (w as any)?.connectorType === 'embedded' ||
+        (w as any)?.isEmbedded === true
+      );
+    });
+
   const handleClaim = async () => {
     if (!dropInfo) return;
 
@@ -257,22 +248,16 @@ export default function DropClaimPage() {
     setError(null);
 
     try {
-      // 1) Prefer embedded wallet
-      const pickEmbedded = (ws: any[]) =>
-        ws.find(w => {
-          const standardName = String(w?.standardWallet?.name ?? '').toLowerCase();
-          const clientType = String(w?.walletClientType ?? '').toLowerCase();
-          return (
-            standardName === 'privy' ||
-            clientType.includes('privy') ||
-            w?.connectorType === 'embedded' ||
-            w?.isEmbedded === true
-          );
-        });
+      if (!walletsReady) {
+        // Give hooks a moment if still initializing
+        await sleep(300);
+      }
 
-      let solanaWallet: any = pickEmbedded(solanaWallets as any);
+      let solanaWallet =
+        pickEmbedded(solanaWallets as ConnectedStandardSolanaWallet[]) ??
+        (solanaWallets?.[0] as ConnectedStandardSolanaWallet | undefined);
 
-      // 2) If none, try create embedded wallet
+      // If none, try create embedded wallet
       if (!solanaWallet) {
         try {
           await createWallet();
@@ -284,21 +269,9 @@ export default function DropClaimPage() {
         }
 
         await sleep(800);
-        solanaWallet = pickEmbedded(solanaWallets as any);
-      }
-
-      // 3) Fallback from linkedAccounts if hook still empty
-      const solanaWalletAccount =
-        (user?.linkedAccounts ?? []).find(isSolanaLinkedWalletAccount) as
-          | SolanaLinkedWalletAccount
-          | undefined;
-
-      if (!solanaWallet && solanaWalletAccount?.address) {
-        solanaWallet = {
-          address: solanaWalletAccount.address,
-          id: solanaWalletAccount.id,
-          walletClientType: solanaWalletAccount.walletClientType,
-        };
+        solanaWallet =
+          pickEmbedded(solanaWallets as ConnectedStandardSolanaWallet[]) ??
+          (solanaWallets?.[0] as ConnectedStandardSolanaWallet | undefined);
       }
 
       if (!solanaWallet?.address) {
@@ -313,12 +286,12 @@ export default function DropClaimPage() {
       const claimerPubkey = new PublicKey(solanaWallet.address);
       const feePayerPubkey = new PublicKey(FEE_PAYER_ADDRESS);
 
-      // 4) Build base transaction (from your SDK)
+      // Build base transaction
       const baseTx = dropInfo.isNativeSol
         ? await buildClaimDropSolTransaction(dropInfo, claimerPubkey)
         : await buildClaimDropTransaction(connection, dropInfo, claimerPubkey);
 
-      // 5) Build v0 message with app fee payer
+      // fee payer app
       const { blockhash } = await connection.getLatestBlockhash();
 
       const messageV0 = new TransactionMessage({
@@ -329,31 +302,24 @@ export default function DropClaimPage() {
 
       const vtx = new VersionedTransaction(messageV0);
 
-      // 6) Encode unsigned tx bytes
-      const unsignedBytes = vtx.serialize();
+      // ✅ Privy v3 expects buffer inputs for Solana signing hooks
+      const txBytes = vtx.serialize();
 
-      // 7) Sign tx via Privy Solana hook
-      // Hook expects encoded tx bytes (Uint8Array) + wallet + chain :contentReference[oaicite:3]{index=3}
       const { signedTransaction } = await signTransaction({
         wallet: solanaWallet,
-        transaction: unsignedBytes,
-        chain: 'solana:mainnet',
+        transaction: txBytes,
+        chain: CHAIN,
+        options: { uiOptions: { showWalletUIs: false } },
       });
 
-      if (!signedTransaction) {
-        throw new Error('Failed to sign transaction.');
-      }
-
-      // 8) Base64 signed tx
       const signedTxBase64 = uint8ToBase64(signedTransaction);
 
-      // 9) Get Privy access token
+      // Get Privy access token
       const accessToken = await getAccessToken();
       if (!accessToken) {
         throw new Error('Missing access token. Please re-login.');
       }
 
-      // 10) Send to app API (server wallet will add fee payer sig + send)
       const response = await fetch('/api/sponsor-transaction', {
         method: 'POST',
         headers: {
