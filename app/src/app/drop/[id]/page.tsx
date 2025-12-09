@@ -215,30 +215,36 @@ export default function DropClaimPage() {
     setError(null);
 
     try {
-      // 1) Prefer embedded wallet for gas sponsorship
-      const pickEmbedded = (ws: any[]) =>
-        ws.find(w =>
-          w?.walletClientType === 'privy' ||
-          w?.connectorType === 'embedded' ||
-          w?.isEmbedded === true
-        );
+    // 1) Prefer embedded wallet for gas sponsorship
+        const pickEmbedded = (ws: any[]) =>
+          ws.find(w => {
+            const clientType = String(w?.walletClientType ?? '').toLowerCase();
+            return (
+              clientType.includes('privy') ||          // ✅ lebih fleksibel
+              w?.connectorType === 'embedded' ||
+              w?.isEmbedded === true
+            );
+          });
 
-      let solanaWallet: any = pickEmbedded(solanaWallets as any);
+        let solanaWallet: any =
+      pickEmbedded(solanaWallets as any);
 
-      if (!solanaWallet) {
+    // 2) If none, create embedded wallet
+    if (!solanaWallet) {
+      try {
         await createWallet();
-        await sleep(800);
-        solanaWallet = pickEmbedded(solanaWallets as any);
+      } catch (e: any) {
+        const msg = String(e?.message ?? '').toLowerCase();
+        if (!msg.includes('already has an embedded wallet')) {
+          throw e;
+        }
       }
 
-      if (!solanaWallet) {
-        throw new Error(
-          'Embedded wallet not found. Please try again or re-login.'
-        );
-      }
+      await sleep(800);
+      solanaWallet = pickEmbedded(solanaWallets as any);
+    }
 
-
-      // 3) Fallback from linkedAccounts if hook still empty (type-safe)
+    // 3) Fallback from linkedAccounts if hook still empty (type-safe)
       const solanaWalletAccount =
         (user?.linkedAccounts ?? []).find(isSolanaLinkedWalletAccount) as
           | SolanaLinkedWalletAccount
@@ -252,13 +258,23 @@ export default function DropClaimPage() {
         };
       }
 
+
+      if (!solanaWallet) {
+        throw new Error(
+          'Embedded wallet not found. Please try again or re-login.'
+        );
+      }
+
+
       if (!solanaWallet?.address) {
         throw new Error('No Solana wallet available. Please try again.');
       }
 
       // 4) Enforce embedded wallet for sponsorship
+      const clientType = String(solanaWallet?.walletClientType ?? '').toLowerCase();
+
       const isEmbedded =
-        solanaWallet?.walletClientType === 'privy' ||
+        clientType.includes('privy') ||
         solanaWallet?.connectorType === 'embedded' ||
         solanaWallet?.isEmbedded === true;
 
