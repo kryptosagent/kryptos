@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { Keypair, VersionedTransaction, Transaction, Connection } from '@solana/web3.js';
-import bs58 from 'bs58';
 
 export const runtime = 'nodejs';
 
@@ -9,6 +8,33 @@ const FEE_PAYER_PRIVATE_KEY = process.env.FEE_PAYER_PRIVATE_KEY!;
 const FEE_PAYER_ADDRESS = process.env.FEE_PAYER_ADDRESS!;
 
 const connection = new Connection(RPC_URL, 'confirmed');
+
+// Decode base58 without bs58 library
+function decodeBase58(str: string): Uint8Array {
+  const ALPHABET = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
+  const bytes: number[] = [0];
+  for (const char of str) {
+    const value = ALPHABET.indexOf(char);
+    if (value === -1) throw new Error('Invalid base58 character');
+    for (let i = 0; i < bytes.length; i++) bytes[i] *= 58;
+    bytes[0] += value;
+    let carry = 0;
+    for (let i = 0; i < bytes.length; i++) {
+      bytes[i] += carry;
+      carry = Math.floor(bytes[i] / 256);
+      bytes[i] %= 256;
+    }
+    while (carry > 0) {
+      bytes.push(carry % 256);
+      carry = Math.floor(carry / 256);
+    }
+  }
+  for (const char of str) {
+    if (char !== '1') break;
+    bytes.push(0);
+  }
+  return new Uint8Array(bytes.reverse());
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,7 +45,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Initialize fee payer keypair
-    const feePayerWallet = Keypair.fromSecretKey(bs58.default.decode(FEE_PAYER_PRIVATE_KEY));
+    const feePayerWallet = Keypair.fromSecretKey(decodeBase58(FEE_PAYER_PRIVATE_KEY));
 
     // Deserialize the transaction
     const transactionBuffer = Buffer.from(transactionBase64, 'base64');
