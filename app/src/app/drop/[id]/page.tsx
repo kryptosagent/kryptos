@@ -3,11 +3,16 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
-import { useWallets, useCreateWallet } from '@privy-io/react-auth/solana';
+import {
+  useWallets,
+  useCreateWallet,
+  useSignTransaction,
+} from '@privy-io/react-auth/solana';
 import {
   Connection,
   PublicKey,
-  Transaction,
+  TransactionMessage,
+  VersionedTransaction,
 } from '@solana/web3.js';
 import {
   fetchDropInfo,
@@ -17,7 +22,7 @@ import {
   isDropExpired,
   getTimeUntilExpiry,
   formatTimeRemaining,
-  DropInfo
+  DropInfo,
 } from '@/lib/kryptos-drop-sdk';
 
 // SVG Icons
@@ -100,15 +105,14 @@ const Icons = {
 };
 
 const TOKEN_METADATA: Record<string, { symbol: string; decimals: number }> = {
-  'So11111111111111111111111111111111111111112': { symbol: 'SOL', decimals: 9 },
-  'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v': { symbol: 'USDC', decimals: 6 },
-  'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB': { symbol: 'USDT', decimals: 6 },
+  So11111111111111111111111111111111111111112: { symbol: 'SOL', decimals: 9 },
+  EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v: { symbol: 'USDC', decimals: 6 },
+  Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB: { symbol: 'USDT', decimals: 6 },
 };
 
 const RPC_URL =
   process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
-// ✅ sinkron dengan env Vercel kamu
 const FEE_PAYER_ADDRESS =
   process.env.NEXT_PUBLIC_SOLANA_FEE_PAYER_ADDRESS;
 
@@ -176,6 +180,7 @@ export default function DropClaimPage() {
   const { login, authenticated, user, getAccessToken } = usePrivy();
   const { wallets: solanaWallets } = useWallets();
   const { createWallet } = useCreateWallet();
+  const { signTransaction } = useSignTransaction(); // ✅ official Solana hook :contentReference[oaicite:2]{index=2}
 
   const [dropInfo, setDropInfo] = useState<DropInfo | null>(null);
   const [status, setStatus] = useState<ClaimStatus>('loading');
@@ -195,7 +200,10 @@ export default function DropClaimPage() {
     try {
       const creatorPubkey = new PublicKey(creatorParam);
       const info = await fetchDropInfo(connection, dropId, creatorPubkey);
-      if (!info) { setStatus('not_found'); return; }
+      if (!info) {
+        setStatus('not_found');
+        return;
+      }
       setDropInfo(info);
       if (info.isClaimed) setStatus('already_claimed');
       else if (isDropExpired(info)) setStatus('expired');
@@ -206,7 +214,9 @@ export default function DropClaimPage() {
     }
   }, [dropId, creatorParam]);
 
-  useEffect(() => { fetchDrop(); }, [fetchDrop]);
+  useEffect(() => {
+    fetchDrop();
+  }, [fetchDrop]);
 
   useEffect(() => {
     if (!dropInfo?.expiresAt) return;
@@ -224,8 +234,14 @@ export default function DropClaimPage() {
 
   const getTokenInfo = () => {
     if (!dropInfo) return { symbol: 'TOKEN', decimals: 9 };
-    if (dropInfo.isNativeSol) return TOKEN_METADATA['So11111111111111111111111111111111111111112'];
-    return TOKEN_METADATA[dropInfo.tokenMint.toBase58()] || { symbol: 'TOKEN', decimals: 9 };
+    if (dropInfo.isNativeSol)
+      return TOKEN_METADATA['So11111111111111111111111111111111111111112'];
+    return (
+      TOKEN_METADATA[dropInfo.tokenMint.toBase58()] || {
+        symbol: 'TOKEN',
+        decimals: 9,
+      }
+    );
   };
 
   const handleClaim = async () => {
@@ -244,8 +260,10 @@ export default function DropClaimPage() {
       // 1) Prefer embedded wallet
       const pickEmbedded = (ws: any[]) =>
         ws.find(w => {
+          const standardName = String(w?.standardWallet?.name ?? '').toLowerCase();
           const clientType = String(w?.walletClientType ?? '').toLowerCase();
           return (
+            standardName === 'privy' ||
             clientType.includes('privy') ||
             w?.connectorType === 'embedded' ||
             w?.isEmbedded === true
@@ -278,8 +296,8 @@ export default function DropClaimPage() {
       if (!solanaWallet && solanaWalletAccount?.address) {
         solanaWallet = {
           address: solanaWalletAccount.address,
-          walletClientType: solanaWalletAccount.walletClientType,
           id: solanaWalletAccount.id,
+          walletClientType: solanaWalletAccount.walletClientType,
         };
       }
 
@@ -295,52 +313,47 @@ export default function DropClaimPage() {
       const claimerPubkey = new PublicKey(solanaWallet.address);
       const feePayerPubkey = new PublicKey(FEE_PAYER_ADDRESS);
 
-      // 4) Build base transaction (dari SDK kamu)
+      // 4) Build base transaction (from your SDK)
       const baseTx = dropInfo.isNativeSol
         ? await buildClaimDropSolTransaction(dropInfo, claimerPubkey)
         : await buildClaimDropTransaction(connection, dropInfo, claimerPubkey);
 
-      // 5) Buat legacy tx baru dengan fee payer APP
+      // 5) Build v0 message with app fee payer
       const { blockhash } = await connection.getLatestBlockhash();
 
-      const tx = new Transaction();
-      tx.feePayer = feePayerPubkey;
-      tx.recentBlockhash = blockhash;
+      const messageV0 = new TransactionMessage({
+        payerKey: feePayerPubkey,
+        recentBlockhash: blockhash,
+        instructions: baseTx.instructions,
+      }).compileToV0Message();
 
-      // ambil instructions dari baseTx
-      tx.add(...baseTx.instructions);
+      const vtx = new VersionedTransaction(messageV0);
 
-      // 6) Sign tx as user (robust)
-      const walletAny = solanaWallet as any;
+      // 6) Encode unsigned tx bytes
+      const unsignedBytes = vtx.serialize();
 
-      let signTransactionFn =
-        walletAny?.signTransaction;
+      // 7) Sign tx via Privy Solana hook
+      // Hook expects encoded tx bytes (Uint8Array) + wallet + chain :contentReference[oaicite:3]{index=3}
+      const { signedTransaction } = await signTransaction({
+        wallet: solanaWallet,
+        transaction: unsignedBytes,
+        chain: 'solana:mainnet',
+      });
 
-      if (typeof signTransactionFn !== 'function' && typeof walletAny?.getProvider === 'function') {
-        const provider = await walletAny.getProvider();
-        signTransactionFn = provider?.signTransaction;
+      if (!signedTransaction) {
+        throw new Error('Failed to sign transaction.');
       }
 
-      if (typeof signTransactionFn !== 'function') {
-        throw new Error('Wallet cannot sign transactions.');
-      }
+      // 8) Base64 signed tx
+      const signedTxBase64 = uint8ToBase64(signedTransaction);
 
-      const signedTx = await signTransactionFn(tx);
-
-      // 7) Serialize base64
-      const signedTxBase64 = uint8ToBase64(
-        signedTx.serialize({
-          requireAllSignatures: false,
-          verifySignatures: false,
-        })
-      );
-
-      // 8) Get Privy access token
+      // 9) Get Privy access token
       const accessToken = await getAccessToken();
       if (!accessToken) {
         throw new Error('Missing access token. Please re-login.');
       }
 
+      // 10) Send to app API (server wallet will add fee payer sig + send)
       const response = await fetch('/api/sponsor-transaction', {
         method: 'POST',
         headers: {
@@ -368,7 +381,9 @@ export default function DropClaimPage() {
   };
 
   const tokenInfo = getTokenInfo();
-  const formattedAmount = dropInfo ? formatAmount(dropInfo.amount, tokenInfo.decimals) : '0';
+  const formattedAmount = dropInfo
+    ? formatAmount(dropInfo.amount, tokenInfo.decimals)
+    : '0';
 
   if (status === 'loading') {
     return (
@@ -384,7 +399,9 @@ export default function DropClaimPage() {
         <div className="bg-zinc-900 rounded-2xl p-8 max-w-md w-full text-center border border-zinc-800">
           <div className="flex justify-center mb-4">{Icons.search}</div>
           <h1 className="text-xl font-semibold text-white mb-2">Drop Not Found</h1>
-          <p className="text-zinc-500 text-sm">{error || 'This link is invalid or has expired'}</p>
+          <p className="text-zinc-500 text-sm">
+            {error || 'This link is invalid or has expired'}
+          </p>
         </div>
       </div>
     );
@@ -403,7 +420,9 @@ export default function DropClaimPage() {
           <div className="flex justify-center mb-3">
             {dropInfo?.isNativeSol ? Icons.solana : Icons.token}
           </div>
-          <div className="text-3xl font-bold text-white">{formattedAmount} {tokenInfo.symbol}</div>
+          <div className="text-3xl font-bold text-white">
+            {formattedAmount} {tokenInfo.symbol}
+          </div>
         </div>
 
         {timeRemaining && status === 'ready' && (
@@ -431,7 +450,9 @@ export default function DropClaimPage() {
           <div className="p-4 mb-6 bg-zinc-950 rounded-lg border border-emerald-900 text-center">
             <div className="flex justify-center mb-2">{Icons.check}</div>
             <p className="text-white font-medium mb-1">Claimed successfully</p>
-            <p className="text-zinc-500 text-sm mb-3">{formattedAmount} {tokenInfo.symbol} received</p>
+            <p className="text-zinc-500 text-sm mb-3">
+              {formattedAmount} {tokenInfo.symbol} received
+            </p>
             {txSignature && (
               <a
                 href={`https://solscan.io/tx/${txSignature}`}
@@ -485,7 +506,10 @@ export default function DropClaimPage() {
         {authenticated && user && (
           <div className="mt-6 pt-6 border-t border-zinc-800 text-center">
             <p className="text-zinc-500 text-sm">
-              Signed in as <span className="text-zinc-300">{user.email?.address || user.google?.email || 'User'}</span>
+              Signed in as{' '}
+              <span className="text-zinc-300">
+                {user.email?.address || user.google?.email || 'User'}
+              </span>
             </p>
           </div>
         )}
