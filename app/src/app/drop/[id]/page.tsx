@@ -186,14 +186,6 @@ export default function DropClaimPage() {
       
       if (!solanaWallet) throw new Error('No wallet available. Please try again.');
       
-      // Debug: find walletId property
-      console.log('Wallet object:', solanaWallet);
-      console.log('Wallet properties:', Object.keys(solanaWallet));
-      console.log('Wallet JSON:', JSON.stringify(solanaWallet, (key, value) => {
-        if (typeof value === 'function') return 'function';
-        return value;
-      }, 2));
-      
       const claimerPubkey = new PublicKey(solanaWallet.address);
       
       // Build transaction
@@ -215,8 +207,20 @@ export default function DropClaimPage() {
       // Send via API route with gas sponsorship (Privy signs on server)
       const transactionBase64 = Buffer.from(serializedTx).toString('base64');
       
-      // Get walletId from embedded wallet
-      const walletId = (solanaWallet as any).id;
+      // Get walletId from user.linkedAccounts
+      const solanaWalletAccount = user?.linkedAccounts?.find(
+        (account: any) => account.type === 'wallet' && account.chainType === 'solana'
+      );
+      
+      // Try multiple sources for walletId
+      const walletId = (solanaWallet as any).id 
+        || (solanaWalletAccount as any)?.walletId
+        || (solanaWalletAccount as any)?.id;
+      
+      console.log('Wallet address:', solanaWallet.address);
+      console.log('LinkedAccount:', solanaWalletAccount);
+      console.log('WalletId found:', walletId);
+      
       if (!walletId) {
         throw new Error('Wallet ID not found. Please try with an embedded wallet.');
       }
