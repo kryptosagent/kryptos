@@ -1,110 +1,84 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { PrivyClient } from '@privy-io/node';
+import { Keypair, VersionedTransaction, Transaction, Connection } from '@solana/web3.js';
+import bs58 from 'bs58';
 
 export const runtime = 'nodejs';
 
-const SOLANA_MAINNET_CAIP2 = 'solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp';
+const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
+const FEE_PAYER_PRIVATE_KEY = process.env.FEE_PAYER_PRIVATE_KEY!;
+const FEE_PAYER_ADDRESS = process.env.FEE_PAYER_ADDRESS!;
 
-const privy = new PrivyClient({
-  appId: process.env.PRIVY_APP_ID ?? '',
-  appSecret: process.env.PRIVY_APP_SECRET ?? '',
-});
-
-const SERVER_WALLET_ID = process.env.PRIVY_SERVER_WALLET_ID;
-
-type SignAndSendSolanaRpcBody = {
-  method: 'signAndSendTransaction';
-  caip2: typeof SOLANA_MAINNET_CAIP2;
-  params: {
-    transaction: string;
-    encoding: 'base64';
-  };
-};
-
-type SignAndSendSolanaRpcResponse = {
-  method: 'signAndSendTransaction';
-  data: {
-    hash: string;
-    caip2: string;
-    transaction_id?: string;
-  };
-};
-
-function getBearer(req: NextRequest) {
-  const h = req.headers.get('authorization') || '';
-  const m = h.match(/^Bearer\s+(.+)$/i);
-  return m?.[1];
-}
+const connection = new Connection(RPC_URL, 'confirmed');
 
 export async function POST(req: NextRequest) {
   try {
-    if (!process.env.PRIVY_APP_ID || !process.env.PRIVY_APP_SECRET) {
-      return NextResponse.json(
-        { error: 'Missing PRIVY_APP_ID/PRIVY_APP_SECRET env vars' },
-        { status: 500 }
-      );
-    }
-
-    if (!SERVER_WALLET_ID) {
-      return NextResponse.json(
-        { error: 'Missing PRIVY_SERVER_WALLET_ID env var' },
-        { status: 500 }
-      );
-    }
-
-    const userJwt = getBearer(req);
-    if (!userJwt) {
-      return NextResponse.json(
-        { error: 'Missing Authorization Bearer token' },
-        { status: 401 }
-      );
-    }
-
-    try {
-      await privy.utils().auth().verifyAuthToken(userJwt);
-    } catch {
-      return NextResponse.json(
-        { error: 'Invalid Privy access token' },
-        { status: 401 }
-      );
-    }
-
     const { transactionBase64 } = await req.json();
 
     if (!transactionBase64) {
-      return NextResponse.json(
-        { error: 'Missing transactionBase64' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Missing transaction data' }, { status: 400 });
     }
 
-    const body: SignAndSendSolanaRpcBody = {
-      method: 'signAndSendTransaction',
-      caip2: SOLANA_MAINNET_CAIP2,
-      params: {
-        transaction: transactionBase64,
-        encoding: 'base64',
-      },
-    };
+    // Initialize fee payer keypair
+    const feePayerWallet = Keypair.fromSecretKey(bs58.default.decode(FEE_PAYER_PRIVATE_KEY));
 
-    const res = (await (privy as any).wallets().rpc(
-      SERVER_WALLET_ID,
-      body
-    )) as SignAndSendSolanaRpcResponse;
-
-    const hash = res?.data?.hash;
-    if (!hash) {
-      return NextResponse.json(
-        { error: 'No transaction hash returned from Privy' },
-        { status: 500 }
-      );
+    // Deserialize the transaction
+    const transactionBuffer = Buffer.from(transactionBase64, 'base64');
+    
+    let transaction: VersionedTransaction | Transaction;
+    let isVersioned = false;
+    
+    try {
+      transaction = VersionedTransaction.deserialize(transactionBuffer);
+      isVersioned = true;
+    } catch {
+      transaction = Transaction.from(transactionBuffer);
     }
 
-    return NextResponse.json({ signature: hash });
-  } catch (err: any) {
-    console.error('App-managed sponsor error:', err);
+    // Verify fee payer
+    if (isVersioned) {
+      const vTx = transaction as VersionedTransaction;
+      const accountKeys = vTx.message.getAccountKeys();
+      const feePayer = accountKeys.get(0);
+      
+      if (!feePayer || feePayer.toBase58() !== FEE_PAYER_ADDRESS) {
+        console.error('Fee payer mismatch:', feePayer?.toBase58(), 'expected:', FEE_PAYER_ADDRESS);
+        return NextResponse.json({ error: 'Invalid fee payer in transaction' }, { status: 403 });
+      }
+      
+      // Sign with fee payer
+      vTx.sign([feePayerWallet]);
+      
+      // Send transaction
+      const signature = await connection.sendRawTransaction(vTx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
+      
+      await connection.confirmTransaction(signature, 'confirmed');
+      return NextResponse.json({ signature });
+    } else {
+      const legacyTx = transaction as Transaction;
+      
+      if (legacyTx.feePayer?.toBase58() !== FEE_PAYER_ADDRESS) {
+        return NextResponse.json({ error: 'Invalid fee payer in transaction' }, { status: 403 });
+      }
+      
+      // Sign with fee payer
+      legacyTx.partialSign(feePayerWallet);
+      
+      // Send transaction
+      const signature = await connection.sendRawTransaction(legacyTx.serialize(), {
+        skipPreflight: false,
+        preflightCommitment: 'confirmed',
+      });
+      
+      await connection.confirmTransaction(signature, 'confirmed');
+      return NextResponse.json({ signature });
+    }
+  } catch (error: any) {
+    console.error('Sponsor transaction error:', error);
     return NextResponse.json(
-      { error: err?.message ?? 'Failed to sponsor transaction' },
+      { error: error?.message ?? 'Failed to sponsor transaction' },
       { status: 500 }
     );
   }
