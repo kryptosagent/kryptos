@@ -4,7 +4,12 @@ import { useEffect, useState, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { usePrivy } from '@privy-io/react-auth';
 import { useWallets, useCreateWallet } from '@privy-io/react-auth/solana';
-import { Connection, PublicKey } from '@solana/web3.js';
+import {
+  Connection,
+  PublicKey,
+  TransactionMessage,
+  VersionedTransaction,
+} from '@solana/web3.js';
 import { fetchDropInfo, buildClaimDropTransaction, buildClaimDropSolTransaction, formatAmount, isDropExpired, getTimeUntilExpiry, formatTimeRemaining, DropInfo } from '@/lib/kryptos-drop-sdk';
 
 // SVG Icons
@@ -92,7 +97,12 @@ const TOKEN_METADATA: Record<string, { symbol: string; decimals: number }> = {
   'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB': { symbol: 'USDT', decimals: 6 },
 };
 
-const RPC_URL = process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
+const RPC_URL =
+  process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
+
+const FEE_PAYER_ADDRESS =
+  process.env.NEXT_PUBLIC_SOLANA_FEE_PAYER_ADDRESS;
+
 
 // helpers
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -215,36 +225,35 @@ export default function DropClaimPage() {
     setError(null);
 
     try {
-    // 1) Prefer embedded wallet for gas sponsorship
-        const pickEmbedded = (ws: any[]) =>
-          ws.find(w => {
-            const clientType = String(w?.walletClientType ?? '').toLowerCase();
-            return (
-              clientType.includes('privy') ||          // ✅ lebih fleksibel
-              w?.connectorType === 'embedded' ||
-              w?.isEmbedded === true
-            );
-          });
+      // 1) Prefer embedded wallet
+      const pickEmbedded = (ws: any[]) =>
+        ws.find(w => {
+          const clientType = String(w?.walletClientType ?? '').toLowerCase();
+          return (
+            clientType.includes('privy') ||
+            w?.connectorType === 'embedded' ||
+            w?.isEmbedded === true
+          );
+        });
 
-        let solanaWallet: any =
-      pickEmbedded(solanaWallets as any);
+      let solanaWallet: any = pickEmbedded(solanaWallets as any);
 
-    // 2) If none, create embedded wallet
-    if (!solanaWallet) {
-      try {
-        await createWallet();
-      } catch (e: any) {
-        const msg = String(e?.message ?? '').toLowerCase();
-        if (!msg.includes('already has an embedded wallet')) {
-          throw e;
+      // 2) If none, try create embedded wallet
+      if (!solanaWallet) {
+        try {
+          await createWallet();
+        } catch (e: any) {
+          const msg = String(e?.message ?? '').toLowerCase();
+          if (!msg.includes('already has an embedded wallet')) {
+            throw e;
+          }
         }
+
+        await sleep(800);
+        solanaWallet = pickEmbedded(solanaWallets as any);
       }
 
-      await sleep(800);
-      solanaWallet = pickEmbedded(solanaWallets as any);
-    }
-
-    // 3) Fallback from linkedAccounts if hook still empty (type-safe)
+      // 3) Fallback from linkedAccounts if hook still empty
       const solanaWalletAccount =
         (user?.linkedAccounts ?? []).find(isSolanaLinkedWalletAccount) as
           | SolanaLinkedWalletAccount
@@ -253,74 +262,58 @@ export default function DropClaimPage() {
       if (!solanaWallet && solanaWalletAccount?.address) {
         solanaWallet = {
           address: solanaWalletAccount.address,
-          id: solanaWalletAccount.id,
           walletClientType: solanaWalletAccount.walletClientType,
         };
       }
-
-
-      if (!solanaWallet) {
-        throw new Error(
-          'Embedded wallet not found. Please try again or re-login.'
-        );
-      }
-
 
       if (!solanaWallet?.address) {
         throw new Error('No Solana wallet available. Please try again.');
       }
 
-      // 4) Enforce embedded wallet for sponsorship
-      const clientType = String(solanaWallet?.walletClientType ?? '').toLowerCase();
-
-      const isEmbedded =
-        clientType.includes('privy') ||
-        solanaWallet?.connectorType === 'embedded' ||
-        solanaWallet?.isEmbedded === true;
-
-      if (!isEmbedded) {
-        throw new Error(
-          'Gas sponsorship only works with embedded wallets. Please use the embedded wallet to claim.'
-        );
-      }
-
-      // 5) Get walletId (source of truth: wallet object)
-      const walletId =
-        solanaWallet?.id ||
-        solanaWalletAccount?.id;
-
-      if (!walletId) {
-        throw new Error(
-          'Wallet ID not found. Please re-login or re-create embedded wallet.'
-        );
+      // ✅ app-managed fee payer 
+      if (!FEE_PAYER_ADDRESS) {
+        throw new Error('Fee payer is not configured.');
       }
 
       const claimerPubkey = new PublicKey(solanaWallet.address);
+      const feePayerPubkey = new PublicKey(FEE_PAYER_ADDRESS);
 
-      // 6) Build transaction
-      const transaction = dropInfo.isNativeSol
+      // 4) Build base transaction
+      const baseTx = dropInfo.isNativeSol
         ? await buildClaimDropSolTransaction(dropInfo, claimerPubkey)
         : await buildClaimDropTransaction(connection, dropInfo, claimerPubkey);
 
-      // 7) Set blockhash + fee payer (Privy may override fee payer for sponsorship)
+      // 5) fee payer app
       const { blockhash } = await connection.getLatestBlockhash();
-      transaction.recentBlockhash = blockhash;
-      transaction.feePayer = claimerPubkey;
 
-      // 8) Serialize
-      const serializedTx = transaction.serialize({
-        requireAllSignatures: false,
-        verifySignatures: false,
-      });
+      const messageV0 = new TransactionMessage({
+        payerKey: feePayerPubkey,
+        recentBlockhash: blockhash,
+        instructions: baseTx.instructions,
+      }).compileToV0Message();
 
-      // 9) Safe base64 for browser
-      const transactionBase64 = uint8ToBase64(serializedTx);
+      const vtx = new VersionedTransaction(messageV0);
 
-      // 10) Get Privy access token
+      // 6) Sign tx as user
+      const signTransaction =
+        (solanaWallet as any)?.signTransaction ??
+        (await (solanaWallet as any)?.getProvider?.())?.signTransaction;
+
+      if (typeof signTransaction !== 'function') {
+        throw new Error('Wallet cannot sign transactions.');
+      }
+
+      const signedVtx = await signTransaction(vtx);
+
+      // 7) Serialize partially signed tx
+      const signedTxBase64 = uint8ToBase64(
+        (signedVtx as VersionedTransaction).serialize()
+      );
+
+      // 8) Get Privy access token
       const accessToken = await getAccessToken();
-
-      if (!accessToken || accessToken.split('.').length !== 3) {
-        throw new Error('Invalid access token. Please re-login.');
+      if (!accessToken) {
+        throw new Error('Missing access token. Please re-login.');
       }
 
       const response = await fetch('/api/sponsor-transaction', {
@@ -330,8 +323,7 @@ export default function DropClaimPage() {
           Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({
-          walletId,
-          transactionBase64,
+          transactionBase64: signedTxBase64,
         }),
       });
 
@@ -344,6 +336,7 @@ export default function DropClaimPage() {
       setTxSignature(result.signature);
       setStatus('success');
     } catch (err: any) {
+
       console.error('Claim error:', err);
       setStatus('error');
       setError(err.message || 'Failed to claim');
