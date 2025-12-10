@@ -16,7 +16,8 @@ import {
   Mail,
   FileText,
   Bot,
-  Github
+  Github,
+  Gift
 } from 'lucide-react';
 
 // Feature card component
@@ -215,6 +216,11 @@ export default function LandingPage() {
               icon={Layers}
               title="DCA Vaults"
               description="Set up private DCA strategies with on-chain vaults. Automated, trustless, and MEV-immune."
+            />
+            <FeatureCard 
+              icon={Gift}
+              title="Drop Links"
+              description="Send crypto to anyone via shareable links. Recipients claim with email - no wallet needed. Auto-refunds if unclaimed."
             />
           </div>
         </div>

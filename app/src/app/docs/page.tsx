@@ -33,6 +33,7 @@ const sidebarItems = [
     items: [
       { id: 'swap', label: 'Swap Tokens' },
       { id: 'transfer', label: 'Transfer' },
+      { id: 'drop-links', label: 'Drop Links' },
       { id: 'balance', label: 'Check Balance' },
       { id: 'dca', label: 'DCA Vaults' },
       { id: 'manage-dca', label: 'Manage DCA' }, 
@@ -52,9 +53,7 @@ const sidebarItems = [
     title: 'Smart Contract',
     icon: Code,
     items: [
-      { id: 'program-id', label: 'Program ID' },
-      { id: 'dca-vault', label: 'DCA Vault Structure' },
-      { id: 'instructions', label: 'Instructions' },
+      { id: 'program-id', label: 'Program IDs' },
     ]
   },
   {
@@ -97,11 +96,15 @@ const docsContent: Record<string, { title: string; content: React.ReactNode }> =
             </li>
             <li className="flex items-start gap-2">
               <ChevronRight className="w-4 h-4 text-white mt-1 flex-shrink-0" />
+              <span>Drop Links - send crypto to anyone via shareable links</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <ChevronRight className="w-4 h-4 text-white mt-1 flex-shrink-0" />
               <span>Private DCA vaults with randomized execution</span>
             </li>
             <li className="flex items-start gap-2">
               <ChevronRight className="w-4 h-4 text-white mt-1 flex-shrink-0" />
-              <span>Full DCA lifecycle management (create, list, withdraw, close)</span>  {/* NEW */}
+              <span>Full DCA lifecycle management (create, list, withdraw, close)</span>
             </li>
             <li className="flex items-start gap-2">
               <ChevronRight className="w-4 h-4 text-white mt-1 flex-shrink-0" />
@@ -144,6 +147,7 @@ const docsContent: Record<string, { title: string; content: React.ReactNode }> =
             <p className="text-zinc-400 ml-11">Enter a command in natural language:</p>
             <div className="ml-11 mt-3 space-y-2">
               <code className="text-sm text-zinc-300 bg-zinc-800 px-3 py-2 rounded-lg block">Swap 1 SOL to USDC</code>
+              <code className="text-sm text-zinc-300 bg-zinc-800 px-3 py-2 rounded-lg block">Drop 0.1 SOL to friend@email.com</code>
               <code className="text-sm text-zinc-300 bg-zinc-800 px-3 py-2 rounded-lg block">Check my balance</code>
               <code className="text-sm text-zinc-300 bg-zinc-800 px-3 py-2 rounded-lg block">DCA 100 USDC to SOL daily</code>
             </div>
@@ -225,19 +229,8 @@ const docsContent: Record<string, { title: string; content: React.ReactNode }> =
                 <th className="text-left pb-2">Address</th>
               </tr>
             </thead>
-            <tbody className="text-zinc-300">
-              <tr><td className="py-1">SOL</td><td className="font-mono text-xs">So111...1112</td></tr>
-              <tr><td className="py-1">USDC</td><td className="font-mono text-xs">EPjFW...Dt1v</td></tr>
-              <tr><td className="py-1">USDT</td><td className="font-mono text-xs">Es9vM...wNYB</td></tr>
-              <tr><td className="py-1">JUP</td><td className="font-mono text-xs">JUPyi...vCN</td></tr>
-              <tr><td className="py-1">BONK</td><td className="font-mono text-xs">DezXA...B263</td></tr>
-            </tbody>
           </table>
         </div>
-        
-        <p className="text-zinc-400 text-sm">
-          You can also use any token's contract address directly for tokens not in the shortcuts list.
-        </p>
       </div>
     ),
   },
@@ -256,6 +249,90 @@ const docsContent: Record<string, { title: string; content: React.ReactNode }> =
         <div className="space-y-2">
           <code className="text-sm text-zinc-300 bg-zinc-800 px-3 py-2 rounded-lg block">Transfer 1 SOL to 5jhb...3Ami</code>
           <code className="text-sm text-zinc-300 bg-zinc-800 px-3 py-2 rounded-lg block">Send 100 USDC to 9xYz...4Bcd</code>
+        </div>
+      </div>
+    ),
+  },
+  'drop-links': {
+    title: 'Drop Links',
+    content: (
+      <div className="space-y-6">
+        <p className="text-zinc-300 leading-relaxed">
+          Send crypto to anyone using shareable links. Recipients don't need a wallet to claim - they can create one on the spot.
+        </p>
+        
+        <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4">
+          <p className="text-emerald-200 text-sm">
+            <strong>Perfect for:</strong> Gifting crypto, paying friends, onboarding newcomers to Solana, airdrops, and rewards.
+          </p>
+        </div>
+        
+        <h3 className="text-white font-semibold">Command Formats</h3>
+        <div className="space-y-2">
+          <code className="text-sm text-zinc-300 bg-zinc-800 px-3 py-2 rounded-lg block">Drop [amount] [token] to [recipient]</code>
+          <code className="text-sm text-zinc-300 bg-zinc-800 px-3 py-2 rounded-lg block">Send [amount] [token] via link</code>
+          <code className="text-sm text-zinc-300 bg-zinc-800 px-3 py-2 rounded-lg block">Gift [amount] [token] to [recipient]</code>
+        </div>
+        
+        <h3 className="text-white font-semibold mt-6">Examples</h3>
+        <div className="space-y-2">
+          <code className="text-sm text-zinc-300 bg-zinc-800 px-3 py-2 rounded-lg block">Drop 0.1 SOL to john@gmail.com</code>
+          <code className="text-sm text-zinc-300 bg-zinc-800 px-3 py-2 rounded-lg block">Send 100 USDC via link</code>
+          <code className="text-sm text-zinc-300 bg-zinc-800 px-3 py-2 rounded-lg block">Gift 1 SOL to my friend</code>
+          <code className="text-sm text-zinc-300 bg-zinc-800 px-3 py-2 rounded-lg block">Drop 50 BONK to alice@example.com</code>
+        </div>
+        
+        <h3 className="text-white font-semibold mt-6">How It Works</h3>
+        <div className="space-y-4">
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-white text-xs font-bold">1</div>
+              <h4 className="text-white font-medium">Create Drop</h4>
+            </div>
+            <p className="text-zinc-400 text-sm ml-9">Your tokens are locked in a secure escrow smart contract.</p>
+          </div>
+          
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-white text-xs font-bold">2</div>
+              <h4 className="text-white font-medium">Share Link</h4>
+            </div>
+            <p className="text-zinc-400 text-sm ml-9">Copy the generated link and share it via email, chat, or social media.</p>
+          </div>
+          
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-white text-xs font-bold">3</div>
+              <h4 className="text-white font-medium">Recipient Claims</h4>
+            </div>
+            <p className="text-zinc-400 text-sm ml-9">Anyone with the link can claim. They sign in with email/Google to create a wallet automatically.</p>
+          </div>
+          
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-6 h-6 bg-white/10 rounded-full flex items-center justify-center text-white text-xs font-bold">4</div>
+              <h4 className="text-white font-medium">Auto-Refund</h4>
+            </div>
+            <p className="text-zinc-400 text-sm ml-9">If unclaimed after 7 days, tokens are automatically returned to your wallet.</p>
+          </div>
+        </div>
+        
+        <div className="bg-white/5 border border-white/10 rounded-xl p-4 mt-6">
+          <h4 className="text-white font-semibold mb-2">Drop Features</h4>
+          <ul className="space-y-1 text-zinc-400 text-sm">
+            <li>• Supports SOL (now) and any SPL token (soon)</li>
+            <li>• Click-to-copy link for easy sharing</li>
+            <li>• Auto-download drop details as .txt file</li>
+            <li>• Gas-free claiming for recipients (sponsored transactions)</li>
+            <li>• Recipients can export private key to Phantom/Solflare</li>
+          </ul>
+        </div>
+        
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 mt-6">
+          <h4 className="text-white font-semibold mb-2">Drop Program ID</h4>
+          <code className="text-sm text-white bg-zinc-800 px-3 py-2 rounded-lg block break-all">
+            CrvSTnNtciVF2q2rRui19WwAdvxpWjK6faRub9xRcesK
+          </code>
         </div>
       </div>
     ),
@@ -510,7 +587,7 @@ const docsContent: Record<string, { title: string; content: React.ReactNode }> =
     ),
   },
   'program-id': {
-    title: 'Program ID',
+    title: 'Program IDs',
     content: (
       <div className="space-y-6">
         <p className="text-zinc-300 leading-relaxed">
@@ -518,7 +595,8 @@ const docsContent: Record<string, { title: string; content: React.ReactNode }> =
         </p>
         
         <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
-          <h3 className="text-white font-semibold mb-3">KRYPTOS Program</h3>
+          <h3 className="text-white font-semibold mb-3">KRYPTOS DCA Program</h3>
+          <p className="text-zinc-400 text-sm mb-3">Handles DCA vault creation, execution, and management.</p>
           <code className="text-sm text-white bg-zinc-800 px-4 py-3 rounded-lg block break-all">
             F7gyohBLEMJFkMtQDkhqtEZmpABNPE3t32aL8LTXYjy2
           </code>
@@ -531,147 +609,21 @@ const docsContent: Record<string, { title: string; content: React.ReactNode }> =
             View on Solscan <ExternalLink className="w-3 h-3" />
           </a>
         </div>
-      </div>
-    ),
-  },
-  'dca-vault': {
-    title: 'DCA Vault Structure',
-    content: (
-      <div className="space-y-6">
-        <p className="text-zinc-300 leading-relaxed">
-          DCA Vaults are on-chain accounts that hold your funds and execution parameters.
-        </p>
         
-        <h3 className="text-white font-semibold">Vault Parameters</h3>
-        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="text-zinc-500 border-b border-zinc-800">
-                <th className="text-left pb-2">Field</th>
-                <th className="text-left pb-2">Type</th>
-                <th className="text-left pb-2">Description</th>
-              </tr>
-            </thead>
-            <tbody className="text-zinc-300">
-              <tr className="border-b border-zinc-800/50">
-                <td className="py-2 font-mono text-xs">authority</td>
-                <td className="py-2">Pubkey</td>
-                <td className="py-2 text-zinc-400">Wallet owner of the vault</td>
-              </tr>
-              <tr className="border-b border-zinc-800/50">
-                <td className="py-2 font-mono text-xs">input_mint</td>
-                <td className="py-2">Pubkey</td>
-                <td className="py-2 text-zinc-400">Token to sell (e.g., USDC)</td>
-              </tr>
-              <tr className="border-b border-zinc-800/50">
-                <td className="py-2 font-mono text-xs">output_mint</td>
-                <td className="py-2">Pubkey</td>
-                <td className="py-2 text-zinc-400">Token to buy (e.g., SOL)</td>
-              </tr>
-              <tr className="border-b border-zinc-800/50">
-                <td className="py-2 font-mono text-xs">total_amount</td>
-                <td className="py-2">u64</td>
-                <td className="py-2 text-zinc-400">Total amount to DCA</td>
-              </tr>
-              <tr className="border-b border-zinc-800/50">
-                <td className="py-2 font-mono text-xs">amount_per_trade</td>
-                <td className="py-2">u64</td>
-                <td className="py-2 text-zinc-400">Base amount per execution</td>
-              </tr>
-              <tr className="border-b border-zinc-800/50">
-                <td className="py-2 font-mono text-xs">variance_bps</td>
-                <td className="py-2">u16</td>
-                <td className="py-2 text-zinc-400">Amount variance (basis points, e.g., 2000 = ±20%)</td>
-              </tr>
-              <tr className="border-b border-zinc-800/50">
-                <td className="py-2 font-mono text-xs">min_executions</td>
-                <td className="py-2">u8</td>
-                <td className="py-2 text-zinc-400">Min executions per period</td>
-              </tr>
-              <tr className="border-b border-zinc-800/50">
-                <td className="py-2 font-mono text-xs">max_executions</td>
-                <td className="py-2">u8</td>
-                <td className="py-2 text-zinc-400">Max executions per period</td>
-              </tr>
-              <tr className="border-b border-zinc-800/50">
-                <td className="py-2 font-mono text-xs">total_deposited</td>
-                <td className="py-2">u64</td>
-                <td className="py-2 text-zinc-400">Total input tokens deposited</td>
-              </tr>
-              <tr>
-                <td className="py-2 font-mono text-xs">total_withdrawn</td>
-                <td className="py-2">u64</td>
-                <td className="py-2 text-zinc-400">Total output tokens withdrawn</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-        
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-          <h4 className="text-white font-semibold mb-2">Rent Deposit</h4>
-          <p className="text-zinc-400 text-sm">
-            Each DCA vault requires ~0.002 SOL rent deposit to maintain the on-chain account. 
-            This rent is fully refundable when you close the vault.
-          </p>
-        </div>
-      </div>
-    ),
-  },
-  'instructions': {
-    title: 'Instructions',
-    content: (
-      <div className="space-y-6">
-        <p className="text-zinc-300 leading-relaxed">
-          Available instructions for interacting with KRYPTOS smart contracts.
-        </p>
-        
-        <div className="space-y-4">
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <h4 className="text-white font-medium font-mono">initialize_dca</h4>
-            <p className="text-zinc-400 text-sm mt-1">Create a new DCA vault with specified parameters.</p>
-            <div className="mt-3 text-xs text-zinc-500">
-              <span className="font-semibold">Accounts:</span> authority, dca_vault, input_mint, output_mint, input_vault, output_vault, system_program, token_program
-            </div>
-          </div>
-          
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <h4 className="text-white font-medium font-mono">execute_dca</h4>
-            <p className="text-zinc-400 text-sm mt-1">Execute a DCA swap from the vault. Called by the keeper service.</p>
-            <div className="mt-3 text-xs text-zinc-500">
-              <span className="font-semibold">Accounts:</span> keeper, authority, dca_vault, input_vault, output_vault, token_program
-            </div>
-          </div>
-          
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <h4 className="text-white font-medium font-mono">withdraw_dca</h4>
-            <p className="text-zinc-400 text-sm mt-1">Withdraw remaining input/output tokens from a DCA vault back to your wallet.</p>
-            <div className="mt-3 text-xs text-zinc-500">
-              <span className="font-semibold">Accounts:</span> authority, dca_vault, input_vault, output_vault, user_input_ata, user_output_ata, token_program
-            </div>
-          </div>
-          
-          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4">
-            <h4 className="text-white font-medium font-mono">close_dca</h4>
-            <p className="text-zinc-400 text-sm mt-1">Close an empty DCA vault and reclaim the ~0.002 SOL rent deposit.</p>
-            <div className="mt-3 text-xs text-zinc-500">
-              <span className="font-semibold">Accounts:</span> authority, dca_vault, input_vault, output_vault, token_program
-            </div>
-            <div className="mt-2 bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-2">
-              <p className="text-yellow-200 text-xs">
-                <strong>Requirement:</strong> Vault must have 0 balance in both input and output vaults.
-              </p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="bg-white/5 border border-white/10 rounded-xl p-4">
-          <h4 className="text-white font-semibold mb-2">Discriminators</h4>
-          <div className="space-y-1 text-xs font-mono text-zinc-400">
-            <p>initialize_dca: [123, 108, 234, 197, 222, 212, 88, 124]</p>
-            <p>execute_dca: [146, 239, 67, 74, 60, 39, 125, 44]</p>
-            <p>withdraw_dca: [155, 171, 229, 251, 89, 212, 54, 3]</p>
-            <p>close_dca: [22, 7, 33, 98, 168, 183, 34, 243]</p>
-          </div>
+        <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+          <h3 className="text-white font-semibold mb-3">KRYPTOS DROP Program</h3>
+          <p className="text-zinc-400 text-sm mb-3">Handles drop link creation, claiming, and auto-refund escrow.</p>
+          <code className="text-sm text-white bg-zinc-800 px-4 py-3 rounded-lg block break-all">
+            CrvSTnNtciVF2q2rRui19WwAdvxpWjK6faRub9xRcesK
+          </code>
+          <a 
+            href="https://solscan.io/account/CrvSTnNtciVF2q2rRui19WwAdvxpWjK6faRub9xRcesK" 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="inline-flex items-center gap-1 text-zinc-400 hover:text-white text-sm mt-3 transition-colors"
+          >
+            View on Solscan <ExternalLink className="w-3 h-3" />
+          </a>
         </div>
       </div>
     ),
@@ -714,6 +666,16 @@ const docsContent: Record<string, { title: string; content: React.ReactNode }> =
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
             <h4 className="text-white font-semibold mb-2">Is my data private?</h4>
             <p className="text-zinc-400">Yes. KRYPTOS doesn't store any personal data. All interactions happen directly between your wallet and the Solana blockchain.</p>
+          </div>
+          
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+            <h4 className="text-white font-semibold mb-2">How do Drop Links work?</h4>
+            <p className="text-zinc-400">Drop Links lock your tokens in an escrow smart contract. Anyone with the link can claim by signing in with email/Google - a wallet is created automatically. Unclaimed drops auto-refund after 7 days.</p>
+          </div>
+          
+          <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
+            <h4 className="text-white font-semibold mb-2">Do drop recipients need SOL for gas?</h4>
+            <p className="text-zinc-400">No! KRYPTOS sponsors the gas fees for claiming drops, so recipients can claim for free even with an empty wallet.</p>
           </div>
           
           <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-6">
