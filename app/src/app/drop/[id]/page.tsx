@@ -92,6 +92,66 @@ const TOKEN_METADATA: Record<string, { symbol: string; decimals: number }> = {
   'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB': { symbol: 'USDT', decimals: 6 },
 };
 
+// Metaplex Token Metadata Program
+const METADATA_PROGRAM_ID = new PublicKey('metaqbxxUEx9LxNpBQ6u5WqCi8vBtNeXkqt8FVez3zL');
+
+// Fetch token metadata from on-chain (Metaplex)
+async function fetchOnChainTokenMetadata(
+  connection: Connection,
+  mintAddress: PublicKey
+): Promise<{ symbol: string; name: string; decimals: number } | null> {
+  try {
+    // Get decimals from mint account
+    const mintInfo = await connection.getParsedAccountInfo(mintAddress);
+    let decimals = 9;
+    
+    if (mintInfo.value?.data && 'parsed' in mintInfo.value.data) {
+      decimals = mintInfo.value.data.parsed.info.decimals;
+    }
+
+    // Derive metadata PDA
+    const [metadataPda] = PublicKey.findProgramAddressSync(
+      [
+        Buffer.from('metadata'),
+        METADATA_PROGRAM_ID.toBuffer(),
+        mintAddress.toBuffer(),
+      ],
+      METADATA_PROGRAM_ID
+    );
+
+    // Fetch metadata account
+    const metadataAccount = await connection.getAccountInfo(metadataPda);
+    
+    if (!metadataAccount) {
+      console.log('No metadata account found for:', mintAddress.toBase58());
+      return { symbol: 'TOKEN', name: 'Unknown Token', decimals };
+    }
+
+    // Parse metadata (Metaplex format)
+    // Skip: 1 (key) + 32 (update authority) + 32 (mint) = 65 bytes
+    const data = metadataAccount.data;
+    let offset = 65;
+
+    // Name: 4 bytes length + string (max 32 chars, padded with null bytes)
+    const nameLength = data.readUInt32LE(offset);
+    offset += 4;
+    const name = data.slice(offset, offset + nameLength).toString('utf8').replace(/\0/g, '').trim();
+    offset += 32; // Fixed 32 bytes for name
+
+    // Symbol: 4 bytes length + string (max 10 chars, padded with null bytes)  
+    const symbolLength = data.readUInt32LE(offset);
+    offset += 4;
+    const symbol = data.slice(offset, offset + symbolLength).toString('utf8').replace(/\0/g, '').trim();
+
+    console.log('On-chain metadata:', { name, symbol, decimals });
+    
+    return { symbol: symbol || 'TOKEN', name: name || 'Unknown', decimals };
+  } catch (error) {
+    console.error('Error fetching on-chain metadata:', error);
+    return null;
+  }
+}
+
 const RPC_URL =
   process.env.NEXT_PUBLIC_RPC_URL || 'https://api.mainnet-beta.solana.com';
 
@@ -149,6 +209,7 @@ export default function DropClaimPage() {
   const [error, setError] = useState<string | null>(null);
   const [txSignature, setTxSignature] = useState<string | null>(null);
   const [timeRemaining, setTimeRemaining] = useState<string | null>(null);
+  const [tokenInfo, setTokenInfo] = useState<{ symbol: string; decimals: number }>({ symbol: 'TOKEN', decimals: 9 });
 
   const connection = new Connection(RPC_URL, 'confirmed');
 
@@ -194,17 +255,34 @@ export default function DropClaimPage() {
     return () => clearInterval(interval);
   }, [dropInfo, status]);
 
-  const getTokenInfo = () => {
-    if (!dropInfo) return { symbol: 'TOKEN', decimals: 9 };
-    if (dropInfo.isNativeSol)
-      return TOKEN_METADATA['So11111111111111111111111111111111111111112'];
-    return (
-      TOKEN_METADATA[dropInfo.tokenMint.toBase58()] || {
-        symbol: 'TOKEN',
-        decimals: 9,
+  // Fetch token info from on-chain
+  useEffect(() => {
+    async function loadTokenInfo() {
+      if (!dropInfo) return;
+      
+      // Native SOL
+      if (dropInfo.isNativeSol) {
+        setTokenInfo(TOKEN_METADATA['So11111111111111111111111111111111111111112']);
+        return;
       }
-    );
-  };
+      
+      const mintAddress = dropInfo.tokenMint.toBase58();
+      
+      // Check hardcoded first
+      if (TOKEN_METADATA[mintAddress]) {
+        setTokenInfo(TOKEN_METADATA[mintAddress]);
+        return;
+      }
+      
+      // Fetch from on-chain
+      const onChainInfo = await fetchOnChainTokenMetadata(connection, dropInfo.tokenMint);
+      if (onChainInfo) {
+        setTokenInfo({ symbol: onChainInfo.symbol, decimals: onChainInfo.decimals });
+      }
+    }
+    
+    loadTokenInfo();
+  }, [dropInfo]);
 
   const pickEmbedded = (ws: ConnectedStandardSolanaWallet[]) =>
     ws.find(w => {
@@ -327,7 +405,6 @@ export default function DropClaimPage() {
     }
   };
 
-  const tokenInfo = getTokenInfo();
   const formattedAmount = dropInfo
     ? formatAmount(dropInfo.amount, tokenInfo.decimals)
     : '0';
