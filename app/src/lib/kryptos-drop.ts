@@ -308,6 +308,20 @@ export async function createDropToken(
       true, // allowOwnerOffCurve - PDA owned
       tokenProgram
     );
+
+    // === DEBUG LOG ===
+    console.log('=== CREATE DROP TOKEN DEBUG ===');
+    console.log('dropId:', dropId);
+    console.log('creator:', creator.toBase58());
+    console.log('escrowPda:', escrowPda.toBase58());
+    console.log('tokenMint:', tokenMint.toBase58());
+    console.log('tokenProgram:', tokenProgram.toBase58());
+    console.log('creatorAta:', creatorAta.toBase58());
+    console.log('escrowVault:', escrowVault.toBase58());
+    console.log('amount:', params.amount);
+    console.log('decimals:', params.tokenDecimals);
+    console.log('===============================');
+    // === END DEBUG ===
     
     // Serialize instruction data
     const dropIdSerialized = serializeString(dropId);
