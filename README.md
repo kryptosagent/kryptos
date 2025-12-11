@@ -23,7 +23,8 @@ KRYPTOS is a privacy-first DeFi agent that lets you interact with Solana through
 
 ```
 "Swap 1 SOL to USDC"
-"DCA 100 USDC to SOL daily for 7 days"
+"Drop 0.1 SOL to friend@email.com"
+"Burn 100 BONK"
 "Check my balance"
 ```
 
@@ -41,6 +42,26 @@ Your agent handles the rest with built-in privacy features.
 - **AI-Powered Parsing** — Understands context and intent, not just keywords
 - **Multi-Language Support** — English and Indonesian supported
 
+### 🎁 Drop Links
+- **Send to Anyone** — Send crypto via shareable links, no wallet needed
+- **Zero Friction** — Recipients claim with email, Google, or X
+- **Gasless Claims** — We sponsor all transaction fees for recipients
+- **Auto Wallets** — Wallets created automatically on claim
+- **Full Custody** — Recipients can export private keys anytime
+- **Auto Refund** — Unclaimed drops return after 7 days
+- **All Tokens** — Supports SOL, SPL tokens, and Token-2022
+
+### 🔥 Token Burns
+- **Permanent Removal** — Burn unwanted tokens from your wallet
+- **Flexible Amounts** — Burn specific amount, percentage, or all
+- **Full Token Support** — Works with SPL and Token-2022 tokens
+- **Clean Portfolio** — Remove dust and scam tokens
+
+### 💸 Transfers
+- **Direct Transfers** — Send tokens to any Solana wallet address
+- **All Tokens** — Supports SOL, SPL, and Token-2022
+- **Simple Commands** — Just type "Send 10 USDC to [address]"
+
 ### ⚡ Core Capabilities
 - **Instant Swaps** — Optimal routing across all Solana DEXes
 - **Private DCA Vaults** — On-chain automated strategies with privacy features
@@ -57,15 +78,21 @@ Your agent handles the rest with built-in privacy features.
 │                                                              │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐     │
 │  │   Next.js   │    │   Anchor    │    │   Keeper    │     │
-│  │  Frontend   │───▶│   Program   │◀───│   Service   │     │
+│  │  Frontend   │───▶│  Programs   │◀───│   Service   │     │
 │  │             │    │  (on-chain) │    │  (off-chain)│     │
 │  └─────────────┘    └─────────────┘    └─────────────┘     │
 │         │                  │                  │             │
 │         ▼                  ▼                  ▼             │
 │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐     │
 │  │  LLM Agent  │    │ DCA Vaults  │    │  DEX Agg.   │     │
-│  │  (OpenRouter)│    │   (PDAs)    │    │  (Jupiter)  │     │
+│  │ (OpenRouter)│    │ Drop Escrow │    │  (Jupiter)  │     │
 │  └─────────────┘    └─────────────┘    └─────────────┘     │
+│                             │                               │
+│                             ▼                               │
+│                      ┌─────────────┐                        │
+│                      │   Privy     │                        │
+│                      │  (Wallets)  │                        │
+│                      └─────────────┘                        │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -75,9 +102,11 @@ Your agent handles the rest with built-in privacy features.
 | Component | Description | Tech Stack |
 |-----------|-------------|------------|
 | **Frontend** | Chat-based interface for user interaction | Next.js 16, React 19, TailwindCSS 4 |
-| **Smart Contract** | On-chain DCA vaults and privacy logic | Anchor 0.32, Rust 1.89 |
+| **DCA Program** | On-chain DCA vaults and limit orders | Anchor 0.32, Rust 1.89 |
+| **Drop Program** | On-chain escrow for drop links | Anchor 0.32, Rust 1.89 |
 | **Keeper Service** | Automated DCA execution with randomization | Node.js 20, TypeScript 5 |
 | **LLM Agent** | Natural language parsing and intent detection | OpenRouter API |
+| **Auth Provider** | Embedded wallets for drop claims | Privy |
 
 ## Quick Start
 
@@ -119,15 +148,18 @@ OPENROUTER_API_KEY=your_openrouter_key
 NEXT_PUBLIC_HELIUS_API_KEY=your_helius_api_key
 ```
 
-## Smart Contract
+## Smart Contracts
 
-The KRYPTOS smart contract is deployed on Solana Mainnet:
+KRYPTOS smart contracts are deployed on Solana Mainnet:
 
-```
-Program ID: F7gyohBLEMJFkMtQDkhqtEZmpABNPE3t32aL8LTXYjy2
-```
+| Program | Address | Description |
+|---------|---------|-------------|
+| **KRYPTOS DCA** | `F7gyohBLEMJFkMtQDkhqtEZmpABNPE3t32aL8LTXYjy2` | DCA vaults, limit orders |
+| **KRYPTOS Drop** | `CrvSTnNtciVF2q2rRui19WwAdvxpWjK6faRub9xRcesK` | Drop links, escrow, claims |
 
 ### Instructions
+
+**DCA Program:**
 
 | Instruction | Description |
 |-------------|-------------|
@@ -139,6 +171,16 @@ Program ID: F7gyohBLEMJFkMtQDkhqtEZmpABNPE3t32aL8LTXYjy2
 | `withdraw_intent` | Withdraw funds from a limit order |
 | `close_intent` | Close an empty intent vault and reclaim rent |
 | `execute_intent` | Execute a limit order when price target is hit (keeper only) |
+
+**Drop Program:**
+
+| Instruction | Description |
+|-------------|-------------|
+| `create_drop` | Create a new drop with escrow |
+| `create_drop_sol` | Create a native SOL drop |
+| `claim_drop` | Claim tokens from a drop |
+| `claim_drop_sol` | Claim native SOL from a drop |
+| `refund_drop` | Refund expired unclaimed drop to creator |
 
 ### DCA Vault Features
 
@@ -172,16 +214,24 @@ INTENT_CHECK_INTERVAL=30
 
 | Command | Example | Description |
 |---------|---------|-------------|
-| Swap | `Swap 1 SOL to USDC` | Instant token swap |
-| DCA | `DCA 100 USDC to SOL daily for 7 days` | Create DCA vault |
-| Limit Order | `Buy SOL when price drops to $200` | Create limit order |
-| List Limits | `My limit orders` | View active limit orders |
-| Cancel Limit | `Cancel limit order` | Cancel and withdraw funds |
-| Transfer | `Send 10 USDC to <address>` | Transfer tokens |
-| Balance | `Check my balance` | View portfolio |
-| Price | `Price of SOL` | Get token price |
-| Token | `Token <address>` | Lookup token info |
-| Help | `Help` | Show all commands |
+| **Drop** | `Drop 0.1 SOL to friend@email.com` | Send crypto via shareable link |
+| **Drop Token** | `Drop 100 USDC via link` | Drop any SPL/Token-2022 token |
+| **Burn** | `Burn 100 BONK` | Burn specific token amount |
+| **Burn %** | `Burn 50% USDC` | Burn percentage of balance |
+| **Burn All** | `Burn all WIF` | Burn entire token balance |
+| **Transfer** | `Send 10 USDC to <address>` | Transfer to any wallet |
+| **Swap** | `Swap 1 SOL to USDC` | Instant token swap |
+| **DCA** | `DCA 100 USDC to SOL daily for 7 days` | Create DCA vault |
+| **List DCA** | `My DCAs` | View active DCA vaults |
+| **Withdraw DCA** | `Withdraw DCA USDC to SOL` | Withdraw from DCA vault |
+| **Close DCA** | `Close DCA USDC to SOL` | Close vault, reclaim rent |
+| **Limit Order** | `Buy SOL when price drops to $200` | Create limit order |
+| **List Limits** | `My limit orders` | View active limit orders |
+| **Cancel Limit** | `Cancel limit order` | Cancel and withdraw funds |
+| **Balance** | `Check my balance` | View portfolio |
+| **Price** | `Price of SOL` | Get token price |
+| **Token** | `Token <address>` | Lookup token info |
+| **Help** | `Help` | Show all commands |
 
 ## Security
 
@@ -193,16 +243,6 @@ INTENT_CHECK_INTERVAL=30
 ### Responsible Disclosure
 
 Found a vulnerability? Please email [hello@kryptosagent.xyz](mailto:hello@kryptosagent.xyz)
-
-## Roadmap
-
-- [x] Natural language swap execution
-- [x] Private DCA vaults with timing obfuscation
-- [x] MEV-protected transactions
-- [x] Limit orders with privacy features
-- [ ] Cross-chain private swaps
-- [ ] Mobile app
-- [ ] Telegram bot integration
 
 ## Contributing
 
