@@ -20,6 +20,7 @@ export const TOKEN_SHORTCUTS: Record<string, string> = {
   'WSOL': 'So11111111111111111111111111111111111111112',
   'USDC': 'EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v',
   'USDT': 'Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB',
+  'USDY': 'A1KLoBrKBde8Ty9qtNQUtq3C2ortoC3u7twggz7sEto6',
   'JUP': 'JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN',
   'BONK': 'DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263',
   'WIF': 'EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm',
@@ -144,7 +145,29 @@ export interface JupiterHoldingsResponse {
 }
 
 // Command types
-export type CommandType = 'swap' | 'transfer' | 'dca' | 'withdraw_dca' | 'close_dca' | 'list_dca' | 'limit_order' | 'list_limit_orders' | 'cancel_limit_order' | 'burn' | 'balance' | 'status' | 'price' | 'token' | 'help' | 'create_drop' | 'unknown';
+export type CommandType = 
+  |'swap' 
+  | 'transfer' 
+  | 'dca' 
+  | 'withdraw_dca' 
+  | 'close_dca' 
+  | 'list_dca' 
+  | 'limit_order' 
+  | 'list_limit_orders' 
+  | 'cancel_limit_order' 
+  | 'burn' 
+  | 'balance' 
+  | 'status' 
+  | 'price' 
+  | 'token' 
+  | 'help' 
+  | 'create_drop'
+  | 'rwa_info'
+  | 'rwa_deposit'
+  | 'rwa_withdraw'
+  | 'rwa_portfolio'
+  | 'rwa_calculate' 
+  | 'unknown';
 
 export interface ParsedCommand {
   type: CommandType;
@@ -1358,7 +1381,7 @@ Example: \`Swap 1 SOL to EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v\``;
 export function getHelpMessage(): string {
   return `🔒 **KRYPTOS Commands**
 
-**Drop Links (Send to Anyone):**
+**KRYPTOS DROP (Send to Anyone):**
 \`Drop 0.1 SOL to john@gmail.com\` - Create shareable link
 \`Send 100 USDC via link\` - Anyone can claim
 \`Gift 1 SOL to my friend\` - No wallet needed to receive

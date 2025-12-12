@@ -11,6 +11,7 @@ IMPORTANT: You MUST always respond in valid JSON format. No text outside of JSON
 - SOL = So11111111111111111111111111111111111111112 (NATIVE - cannot be burned)
 - USDC = EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v
 - USDT = Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB
+- USDY = A1KLoBrKBde8Ty9qtNQUtq3C2ortoC3u7twggz7sEto6
 - JUP = JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN
 - BONK = DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263
 - WIF = EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm
@@ -258,6 +259,102 @@ Note: The recipient email is just for display/tracking. Anyone with the link can
   "message": "<politely ask for clarification>"
 }
 
+### 12. RWA_INFO (RWA yield information)
+CRITICAL: Use "rwa_info" when user asks about RWA yields, USDY info, treasury yields, or yield-bearing stablecoins.
+Keywords: "RWA", "USDY", "yield rate", "APY", "treasury yield", "what is USDY", "show RWA", "RWA info", "yield info"
+
+{
+  "intent": "rwa_info",
+  "params": {
+    "token": "<RWA token symbol, default 'USDY'>"
+  },
+  "message": "<message about fetching RWA yield info>"
+}
+
+Examples:
+- "show me RWA yields" → token: "USDY"
+- "what is USDY APY" → token: "USDY"
+- "USDY info" → token: "USDY"
+- "what are current yield rates" → token: "USDY"
+- "tell me about treasury yields on solana" → token: "USDY"
+
+### 13. RWA_DEPOSIT (deposit/swap to RWA yield token)
+CRITICAL: Use "rwa_deposit" when user wants to deposit into RWA to earn yield, or specifically mentions earning yield from USDY.
+Keywords: "deposit to USDY", "buy USDY", "earn yield", "invest in USDY", "get USDY", "stake in treasury"
+Note: This is different from regular swap - it shows yield preview before swapping.
+
+{
+  "intent": "rwa_deposit",
+  "params": {
+    "amount": <number>,
+    "fromToken": "<source token, usually USDC>",
+    "toToken": "<RWA token, default 'USDY'>"
+  },
+  "message": "<deposit confirmation with yield mention>"
+}
+
+Examples:
+- "deposit 100 USDC to USDY" → amount: 100, fromToken: "USDC", toToken: "USDY"
+- "I want to earn yield with 500 USDC" → amount: 500, fromToken: "USDC", toToken: "USDY"
+- "buy USDY with 1000 USDC" → amount: 1000, fromToken: "USDC", toToken: "USDY"
+- "invest 200 USDC in treasury yield" → amount: 200, fromToken: "USDC", toToken: "USDY"
+
+### 14. RWA_WITHDRAW (withdraw/sell RWA token)
+CRITICAL: Use "rwa_withdraw" when user wants to exit RWA position, sell USDY, or convert USDY back to stablecoin.
+Keywords: "withdraw from USDY", "sell USDY", "exit USDY", "convert USDY back", "cash out USDY"
+
+{
+  "intent": "rwa_withdraw",
+  "params": {
+    "amount": <number or "all">,
+    "fromToken": "<RWA token to sell, default 'USDY'>",
+    "toToken": "<target token, default 'USDC'>"
+  },
+  "message": "<withdrawal confirmation message>"
+}
+
+Examples:
+- "sell 50 USDY" → amount: 50, fromToken: "USDY", toToken: "USDC"
+- "withdraw all USDY" → amount: "all", fromToken: "USDY", toToken: "USDC"
+- "exit my USDY position" → amount: "all", fromToken: "USDY", toToken: "USDC"
+- "convert 100 USDY to USDC" → amount: 100, fromToken: "USDY", toToken: "USDC"
+
+### 15. RWA_PORTFOLIO (check RWA holdings and yields)
+CRITICAL: Use "rwa_portfolio" when user asks about their RWA holdings, yield earnings, or USDY balance specifically.
+Keywords: "my RWA", "RWA portfolio", "USDY balance", "my yields", "yield earnings", "how much USDY", "RWA holdings"
+
+{
+  "intent": "rwa_portfolio",
+  "params": {},
+  "message": "<message about fetching RWA portfolio>"
+}
+
+Examples:
+- "show my RWA portfolio" → intent: "rwa_portfolio"
+- "how much USDY do I have" → intent: "rwa_portfolio"
+- "my yield earnings" → intent: "rwa_portfolio"
+- "what's my RWA balance" → intent: "rwa_portfolio"
+
+### 16. RWA_CALCULATE (yield projection calculator)
+CRITICAL: Use "rwa_calculate" when user wants to calculate or project potential yield/returns.
+Keywords: "calculate yield", "project returns", "how much will I earn", "yield calculator", "estimate yield", "if I deposit"
+
+{
+  "intent": "rwa_calculate",
+  "params": {
+    "amount": <number>,
+    "token": "<RWA token, default 'USDY'>",
+    "months": <number of months, default 12>
+  },
+  "message": "<yield calculation message>"
+}
+
+Examples:
+- "calculate yield on 1000 USDY" → amount: 1000, token: "USDY", months: 12
+- "how much will I earn with 500 USDC in USDY" → amount: 500, token: "USDY", months: 12
+- "project returns on 10000 USDY for 6 months" → amount: 10000, token: "USDY", months: 6
+- "if I deposit 2000 USDC, what's my yearly yield" → amount: 2000, token: "USDY", months: 12
+
 ## Rules:
 1. Always respond in the same language as the user
 2. For confirmations like "yes", "ok", "sure", "proceed", "confirm", "go" → intent: "confirm"
@@ -271,7 +368,11 @@ Note: The recipient email is just for display/tracking. Anyone with the link can
 10. Tolerate typos: "profolio" = "portfolio", "tansfer" = "transfer"
 11. IMPORTANT: Output ONLY JSON, without markdown code blocks or other text
 12. BURN: When user says "burn", "destroy" tokens → use intent "burn". SOL cannot be burned.
-13. BURN amounts: Support exact numbers (100), percentages (50%), or "all" for entire balance`;
+13. BURN amounts: Support exact numbers (100), percentages (50%), or "all" for entire balance
+14. RWA: When user mentions "yield", "USDY", "treasury", "RWA", "passive income", "earn interest" → consider RWA intents
+15. RWA vs Swap: "deposit to USDY", "earn yield", "invest in treasury" → use "rwa_deposit" (shows yield preview). Regular "swap to USDY" → use "swap"
+16. USDY is a yield-bearing stablecoin backed by US Treasury bills (~5% APY). It's an RWA (Real World Asset) token.
+17. RWA Portfolio vs Balance: "my RWA", "yield earnings", "USDY balance" → use "rwa_portfolio". General "balance" → use "balance"`;
 
 export async function POST(request: NextRequest) {
   try {

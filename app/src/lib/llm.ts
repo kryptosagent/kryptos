@@ -1,5 +1,30 @@
 export interface LLMResponse {
-  intent: 'swap' | 'transfer' | 'dca' | 'withdraw_dca' | 'close_dca' | 'list_dca' | 'limit_order' | 'list_limit_orders' | 'cancel_limit_order' | 'burn' | 'create_drop' | 'balance' | 'price' | 'token' | 'help' | 'cancel' | 'confirm' | 'conversation' | 'unclear';
+  intent: 
+    | 'swap' 
+    | 'transfer' 
+    | 'dca' 
+    | 'withdraw_dca' 
+    | 'close_dca' 
+    | 'list_dca' 
+    | 'limit_order' 
+    | 'list_limit_orders' 
+    | 'cancel_limit_order' 
+    | 'burn' 
+    | 'create_drop' 
+    | 'balance' 
+    | 'price' 
+    | 'token' 
+    | 'help' 
+    | 'cancel' 
+    | 'confirm' 
+    | 'conversation' 
+    | 'unclear'
+    // RWA (Real World Assets) intents
+    | 'rwa_info'       // Show RWA yield info (APY, TVL, risk)
+    | 'rwa_deposit'    // Swap/deposit to RWA token (e.g., USDC → USDY)
+    | 'rwa_withdraw'   // Withdraw/sell RWA token (e.g., USDY → USDC)
+    | 'rwa_portfolio'  // Show user's RWA holdings with yield estimates
+    | 'rwa_calculate'; // Calculate yield projections
   params: Record<string, any>;
   message: string;
 }

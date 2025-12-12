@@ -57,6 +57,18 @@ import {
 import { parseWithLLM } from '@/lib/llm';
 import Link from 'next/link';
 
+// RWA imports
+import {
+  getRWAWithData,
+  buildRWAPortfolio,
+  formatRWAInfo,
+  formatRWAPortfolio,
+  formatYieldProjection,
+  estimateYield,
+  USDY_MINT,
+  getUSDYAPY,
+} from '@/lib/rwa';
+
 // Message types
 type MessageStatus = 'thinking' | 'confirming' | 'executing' | 'done' | 'error';
 
@@ -1403,6 +1415,325 @@ Connect your wallet to start!`,
         break;
       }
       
+      case 'rwa_info': {
+        const { symbol } = command.params;
+        const targetSymbol = symbol || 'USDY';
+        
+        updateMessage(messageId, { content: `Fetching ${targetSymbol} info...`, status: 'thinking' });
+        
+        try {
+          const response = await getRWAWithData(targetSymbol);
+          
+          if (!response.success || !response.data) {
+            updateMessage(messageId, {
+              content: `❌ Could not fetch ${targetSymbol} data: ${response.error || 'Unknown error'}`,
+              status: 'error',
+            });
+            return;
+          }
+          
+          const asset = response.data;
+          const { data: rwaData } = asset;
+          
+          // Format the info message
+          let infoMsg = `💎 **${asset.name} (${asset.symbol})**\n\n`;
+          infoMsg += `┌─────────────────────────────────┐\n`;
+          infoMsg += `│  **APY:**        ${rwaData.apy.toFixed(2)}%\n`;
+          infoMsg += `│  **Price:**      $${rwaData.price.toFixed(4)}\n`;
+          infoMsg += `│  **TVL:**        $${(rwaData.tvl / 1_000_000).toFixed(2)}M\n`;
+          infoMsg += `│  **Risk:**       ⭐ ${asset.riskLabel}\n`;
+          infoMsg += `│  **Liquidity:**  ${asset.liquidity}\n`;
+          infoMsg += `│  **Backing:**    ${asset.backing}\n`;
+          infoMsg += `└─────────────────────────────────┘\n\n`;
+          
+          // Yield preview per $1,000
+          const yields = estimateYield(1000, rwaData.apy);
+          infoMsg += `📈 **Yield Preview (per $1,000)**\n`;
+          infoMsg += `• Daily:   +$${yields.daily.toFixed(2)}\n`;
+          infoMsg += `• Monthly: +$${yields.monthly.toFixed(2)}\n`;
+          infoMsg += `• Yearly:  +$${yields.yearly.toFixed(2)}\n\n`;
+          
+          infoMsg += `💡 ${asset.symbol} earns yield automatically — just hold it!\n\n`;
+          infoMsg += `**Commands:**\n`;
+          infoMsg += `• \`Deposit 100 USDC to USDY\` - Start earning\n`;
+          infoMsg += `• \`Calculate yield on 1000 USDY\` - Project returns`;
+          
+          updateMessage(messageId, { content: infoMsg, status: 'done' });
+        } catch (error: any) {
+          updateMessage(messageId, {
+            content: `❌ Error fetching RWA data: ${error.message}`,
+            status: 'error',
+          });
+        }
+        break;
+      }
+
+      case 'rwa_portfolio': {
+        if (!connected || !publicKey) {
+          updateMessage(messageId, {
+            content: '❌ Please connect your wallet first.',
+            status: 'error',
+          });
+          return;
+        }
+        
+        updateMessage(messageId, { content: 'Checking your RWA holdings...', status: 'thinking' });
+        
+        try {
+          // Get user's token balances
+          const balances = await getBalances(connection, publicKey);
+          
+          // Find RWA tokens in balance
+          const rwaBalances: Array<{ mint: string; balance: number }> = [];
+          
+          for (const token of balances.tokens) {
+            if (token.mint === USDY_MINT) {
+              rwaBalances.push({ mint: token.mint, balance: token.balance });
+            }
+          }
+          
+          if (rwaBalances.length === 0) {
+            let emptyMsg = `💼 **Your RWA Portfolio**\n\n`;
+            emptyMsg += `No RWA holdings found.\n\n`;
+            emptyMsg += `**Start earning yield:**\n`;
+            emptyMsg += `• \`Deposit 100 USDC to USDY\` - Earn ~4% APY\n`;
+            emptyMsg += `• \`USDY info\` - Learn about USDY`;
+            
+            updateMessage(messageId, { content: emptyMsg, status: 'done' });
+            return;
+          }
+          
+          // Build portfolio
+          const portfolio = await buildRWAPortfolio(rwaBalances);
+          
+          let portfolioMsg = `💼 **Your RWA Portfolio**\n\n`;
+          portfolioMsg += `**Total Value:** $${portfolio.totalValueUSD.toLocaleString(undefined, { minimumFractionDigits: 2 })}\n`;
+          portfolioMsg += `**Blended APY:** ${portfolio.blendedAPY.toFixed(2)}%\n\n`;
+          
+          portfolioMsg += `📊 **Holdings:**\n`;
+          for (const holding of portfolio.holdings) {
+            portfolioMsg += `• **${holding.asset.symbol}:** ${holding.balance.toFixed(4)} ($${holding.balanceUSD.toFixed(2)})\n`;
+            portfolioMsg += `  Yield: +$${holding.estimatedYieldMonthly.toFixed(2)}/month\n`;
+          }
+          
+          portfolioMsg += `\n📈 **Projected Yield:**\n`;
+          portfolioMsg += `• Daily:   +$${portfolio.totalYieldDaily.toFixed(2)}\n`;
+          portfolioMsg += `• Monthly: +$${portfolio.totalYieldMonthly.toFixed(2)}\n`;
+          portfolioMsg += `• Yearly:  +$${portfolio.totalYieldYearly.toFixed(2)}\n`;
+          
+          updateMessage(messageId, { content: portfolioMsg, status: 'done' });
+        } catch (error: any) {
+          updateMessage(messageId, {
+            content: `❌ Error fetching portfolio: ${error.message}`,
+            status: 'error',
+          });
+        }
+        break;
+      }
+
+      case 'rwa_calculate': {
+        const { amount, months } = command.params;
+        
+        updateMessage(messageId, { content: 'Calculating yield projection...', status: 'thinking' });
+        
+        try {
+          const apy = await getUSDYAPY();
+          const projectionMonths = months || 12;
+          
+          // Calculate projection
+          const monthlyRate = apy / 100 / 12;
+          let currentValue = amount;
+          const projections: Array<{ month: number; value: number; yield: number }> = [];
+          
+          for (let m = 1; m <= projectionMonths; m++) {
+            const yieldAmount = currentValue * monthlyRate;
+            currentValue += yieldAmount;
+            projections.push({ month: m, value: currentValue, yield: yieldAmount });
+          }
+          
+          const totalYield = currentValue - amount;
+          
+          let calcMsg = `🧮 **Yield Projection**\n\n`;
+          calcMsg += `**Deposit:** $${amount.toLocaleString()}\n`;
+          calcMsg += `**APY:** ${apy.toFixed(2)}%\n`;
+          calcMsg += `**Period:** ${projectionMonths} months\n\n`;
+          
+          calcMsg += `📈 **Timeline:**\n`;
+          const keyMonths = [1, 3, 6, 12].filter(m => m <= projectionMonths);
+          for (const m of keyMonths) {
+            const data = projections[m - 1];
+            calcMsg += `• ${m} month${m > 1 ? 's' : ''}:  $${data.value.toFixed(2)} (+$${(data.value - amount).toFixed(2)})\n`;
+          }
+          
+          calcMsg += `\n**Final Value:** $${currentValue.toFixed(2)}\n`;
+          calcMsg += `**Total Yield:** +$${totalYield.toFixed(2)} (+${((totalYield / amount) * 100).toFixed(1)}%)\n\n`;
+          calcMsg += `💡 *Based on current APY, actual returns may vary.*`;
+          
+          updateMessage(messageId, { content: calcMsg, status: 'done' });
+        } catch (error: any) {
+          updateMessage(messageId, {
+            content: `❌ Error calculating yield: ${error.message}`,
+            status: 'error',
+          });
+        }
+        break;
+      }
+
+      case 'rwa_deposit': {
+        // RWA deposit is essentially a swap with yield preview
+        const { amount, fromTokenRaw, toTokenRaw, fromMint, toMint } = command.params;
+        
+        if (!fromMint) {
+          updateMessage(messageId, {
+            content: `❌ Unknown token: \`${fromTokenRaw}\`\n\n${getSupportedTokensHelp()}`,
+            status: 'error',
+          });
+          return;
+        }
+        
+        if (!toMint) {
+          updateMessage(messageId, {
+            content: `❌ Unknown RWA token: \`${toTokenRaw}\``,
+            status: 'error',
+          });
+          return;
+        }
+        
+        updateMessage(messageId, { content: 'Getting deposit quote...', status: 'thinking' });
+        
+        const [fromTokenInfo, toTokenInfo] = await Promise.all([
+          getTokenInfo(fromMint),
+          getTokenInfo(toMint),
+        ]);
+        
+        if (!fromTokenInfo || !toTokenInfo) {
+          updateMessage(messageId, {
+            content: `❌ Could not find token info.`,
+            status: 'error',
+          });
+          return;
+        }
+        
+        // Get swap quote
+        const orderResult = await getSwapOrder(fromMint, toMint, amount, fromTokenInfo.decimals);
+        
+        if (!orderResult.success) {
+          updateMessage(messageId, {
+            content: `❌ **Deposit not available**\n\n${orderResult.errorMessage || 'Could not get quote from Jupiter.'}`,
+            status: 'error',
+          });
+          return;
+        }
+        
+        const outAmountNum = parseInt(orderResult.outAmount!) / Math.pow(10, toTokenInfo.decimals);
+        
+        // Get APY for yield projection
+        const apy = await getUSDYAPY();
+        const outputValueUSD = outAmountNum * 1.11; // Approximate USDY price
+        const yields = estimateYield(outputValueUSD, apy);
+        
+        let confirmMsg = `💎 **Deposit to RWA**\n\n`;
+        confirmMsg += `**From:** ${amount} ${fromTokenInfo.symbol}\n`;
+        confirmMsg += `**To:** ~${outAmountNum.toFixed(4)} ${toTokenInfo.symbol}\n\n`;
+        
+        confirmMsg += `📈 **Yield Projection (${apy.toFixed(2)}% APY)**\n`;
+        confirmMsg += `• Monthly: +$${yields.monthly.toFixed(2)}\n`;
+        confirmMsg += `• Yearly:  +$${yields.yearly.toFixed(2)}\n\n`;
+        
+        confirmMsg += `🏦 **Backing:** US Treasury Bills\n`;
+        confirmMsg += `⭐ **Risk:** Very Low\n\n`;
+        
+        confirmMsg += `Type **confirm** to deposit or **cancel** to abort.`;
+        
+        updateMessage(messageId, {
+          content: confirmMsg,
+          status: 'confirming',
+          pendingAction: {
+            command: { ...command, type: 'swap' }, // Treat as swap for execution
+            fromToken: fromTokenInfo,
+            toToken: toTokenInfo,
+            quote: {
+              inAmount: orderResult.inAmount!,
+              outAmount: orderResult.outAmount!,
+              priceImpact: orderResult.priceImpact || '0',
+              routeLabel: orderResult.routeLabel,
+            },
+          },
+        });
+        break;
+      }
+
+      case 'rwa_withdraw': {
+        // RWA withdraw is essentially a swap from USDY to USDC/SOL
+        const { amount, fromTokenRaw, toTokenRaw, fromMint, toMint } = command.params;
+        
+        if (!fromMint) {
+          updateMessage(messageId, {
+            content: `❌ Unknown RWA token: \`${fromTokenRaw}\``,
+            status: 'error',
+          });
+          return;
+        }
+        
+        if (!toMint) {
+          updateMessage(messageId, {
+            content: `❌ Unknown token: \`${toTokenRaw}\`\n\n${getSupportedTokensHelp()}`,
+            status: 'error',
+          });
+          return;
+        }
+        
+        updateMessage(messageId, { content: 'Getting withdrawal quote...', status: 'thinking' });
+        
+        const [fromTokenInfo, toTokenInfo] = await Promise.all([
+          getTokenInfo(fromMint),
+          getTokenInfo(toMint),
+        ]);
+        
+        if (!fromTokenInfo || !toTokenInfo) {
+          updateMessage(messageId, {
+            content: `❌ Could not find token info.`,
+            status: 'error',
+          });
+          return;
+        }
+        
+        // Get swap quote
+        const orderResult = await getSwapOrder(fromMint, toMint, amount, fromTokenInfo.decimals);
+        
+        if (!orderResult.success) {
+          updateMessage(messageId, {
+            content: `❌ **Withdrawal not available**\n\n${orderResult.errorMessage || 'Could not get quote from Jupiter.'}`,
+            status: 'error',
+          });
+          return;
+        }
+        
+        const outAmountNum = parseInt(orderResult.outAmount!) / Math.pow(10, toTokenInfo.decimals);
+        
+        let confirmMsg = `🔓 **Withdraw from RWA**\n\n`;
+        confirmMsg += `**From:** ${amount} ${fromTokenInfo.symbol}\n`;
+        confirmMsg += `**To:** ~${outAmountNum.toFixed(4)} ${toTokenInfo.symbol}\n\n`;
+        confirmMsg += `Type **confirm** to withdraw or **cancel** to abort.`;
+        
+        updateMessage(messageId, {
+          content: confirmMsg,
+          status: 'confirming',
+          pendingAction: {
+            command: { ...command, type: 'swap' }, // Treat as swap for execution
+            fromToken: fromTokenInfo,
+            toToken: toTokenInfo,
+            quote: {
+              inAmount: orderResult.inAmount!,
+              outAmount: orderResult.outAmount!,
+              priceImpact: orderResult.priceImpact || '0',
+              routeLabel: orderResult.routeLabel,
+            },
+          },
+        });
+        break;
+      }
+      
       default: {
         updateMessage(messageId, {
           content: `I didn't understand that command.\n\n${getHelpMessage()}`,
@@ -2196,7 +2527,7 @@ Share this link with anyone to let them claim the ${fromToken.symbol}!
           break;
         }
 
-        case 'create_drop': {
+         case 'create_drop': {
           const { amount, token, recipient, expiryHours } = llmResult.params;
           
           const command: ParsedCommand = {
@@ -2206,6 +2537,81 @@ Share this link with anyone to let them claim the ${fromToken.symbol}!
               token,
               recipient: recipient || null,
               expiryHours: expiryHours || 168,
+            },
+            raw: userInput,
+          };
+          await processCommand(command, messageId);
+          break;
+        }
+
+        case 'rwa_info': {
+          const { symbol } = llmResult.params || {};
+          
+          const command: ParsedCommand = {
+            type: 'rwa_info',
+            params: {
+              symbol: symbol || 'USDY',
+            },
+            raw: userInput,
+          };
+          await processCommand(command, messageId);
+          break;
+        }
+
+        case 'rwa_portfolio': {
+          const command: ParsedCommand = {
+            type: 'rwa_portfolio',
+            params: {},
+            raw: userInput,
+          };
+          await processCommand(command, messageId);
+          break;
+        }
+
+        case 'rwa_calculate': {
+          const { amount, months } = llmResult.params || {};
+          
+          const command: ParsedCommand = {
+            type: 'rwa_calculate',
+            params: {
+              amount: amount || 1000,
+              months: months || 12,
+            },
+            raw: userInput,
+          };
+          await processCommand(command, messageId);
+          break;
+        }
+
+        case 'rwa_deposit': {
+          const { amount, fromToken, toToken } = llmResult.params;
+          
+          const command: ParsedCommand = {
+            type: 'rwa_deposit',
+            params: {
+              amount,
+              fromTokenRaw: fromToken,
+              toTokenRaw: toToken || 'USDY',
+              fromMint: resolveToken(fromToken) || fromToken,
+              toMint: resolveToken(toToken || 'USDY') || USDY_MINT,
+            },
+            raw: userInput,
+          };
+          await processCommand(command, messageId);
+          break;
+        }
+
+        case 'rwa_withdraw': {
+          const { amount, fromToken, toToken } = llmResult.params;
+          
+          const command: ParsedCommand = {
+            type: 'rwa_withdraw',
+            params: {
+              amount,
+              fromTokenRaw: fromToken || 'USDY',
+              toTokenRaw: toToken,
+              fromMint: resolveToken(fromToken || 'USDY') || USDY_MINT,
+              toMint: resolveToken(toToken) || toToken,
             },
             raw: userInput,
           };
